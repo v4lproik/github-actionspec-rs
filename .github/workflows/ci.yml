@@ -140,6 +140,7 @@ jobs:
           actual: |
             tests/fixtures/ci/ci-main-success.json
             tests/fixtures/ci/ci-main-pages.json
+            tests/fixtures/ci/ci-main-noop.json
           report-file: /github/runner_temp/github-actionspec-smoke/passing-list-report.json
           dashboard-file: /github/runner_temp/github-actionspec-smoke/passing-list-dashboard.md
           write-summary: false
@@ -165,6 +166,28 @@ jobs:
           report-file: /github/runner_temp/github-actionspec-smoke/skipped-build-report.json
           dashboard-file: /github/runner_temp/github-actionspec-smoke/skipped-build-dashboard.md
           write-summary: false
+      - name: Reject pages run that stays skipped
+        id: skipped-pages
+        continue-on-error: true
+        uses: ./
+        with:
+          repo: .
+          workflow: ci.yml
+          actual: tests/fixtures/ci/ci-pages-enabled-but-skipped.json
+          report-file: /github/runner_temp/github-actionspec-smoke/skipped-pages-report.json
+          dashboard-file: /github/runner_temp/github-actionspec-smoke/skipped-pages-dashboard.md
+          write-summary: false
+      - name: Reject downstream jobs when run_ci is false
+        id: run-ci-disabled
+        continue-on-error: true
+        uses: ./
+        with:
+          repo: .
+          workflow: ci.yml
+          actual: tests/fixtures/ci/ci-run-ci-disabled-build-ran.json
+          report-file: /github/runner_temp/github-actionspec-smoke/run-ci-disabled-report.json
+          dashboard-file: /github/runner_temp/github-actionspec-smoke/run-ci-disabled-dashboard.md
+          write-summary: false
       - name: Validate expected smoke outcomes
         if: ${{ always() }}
         run: |
@@ -177,6 +200,16 @@ jobs:
 
           if [[ "${{ steps.skipped-build.outcome }}" != "failure" ]]; then
             echo "::error::The skipped build fixture should fail validation."
+            exit 1
+          fi
+
+          if [[ "${{ steps.skipped-pages.outcome }}" != "failure" ]]; then
+            echo "::error::The skipped pages fixture should fail validation."
+            exit 1
+          fi
+
+          if [[ "${{ steps.run-ci-disabled.outcome }}" != "failure" ]]; then
+            echo "::error::The run_ci=false fixture should fail when downstream jobs run."
             exit 1
           fi
       - name: Prepare matrix dashboard workspace
@@ -307,6 +340,7 @@ jobs:
           actual: |
             tests/fixtures/ci/ci-main-success.json
             tests/fixtures/ci/ci-main-pages.json
+            tests/fixtures/ci/ci-main-noop.json
       - name: Reject non-main workflow run
         id: wrong-ref
         continue-on-error: true
@@ -323,6 +357,22 @@ jobs:
           repo: .
           workflow: ci.yml
           actual: tests/fixtures/ci/ci-build-skipped.json
+      - name: Reject pages run that stays skipped
+        id: skipped-pages
+        continue-on-error: true
+        uses: v4lproik/github-actionspec-rs@main
+        with:
+          repo: .
+          workflow: ci.yml
+          actual: tests/fixtures/ci/ci-pages-enabled-but-skipped.json
+      - name: Reject downstream jobs when run_ci is false
+        id: run-ci-disabled
+        continue-on-error: true
+        uses: v4lproik/github-actionspec-rs@main
+        with:
+          repo: .
+          workflow: ci.yml
+          actual: tests/fixtures/ci/ci-run-ci-disabled-build-ran.json
       - name: Validate expected plugin outcomes
         if: ${{ always() }}
         run: |
@@ -337,6 +387,16 @@ jobs:
             echo "::error::The skipped build fixture should fail validation."
             exit 1
           fi
+
+          if [[ "${{ steps.skipped-pages.outcome }}" != "failure" ]]; then
+            echo "::error::The skipped pages fixture should fail validation."
+            exit 1
+          fi
+
+          if [[ "${{ steps.run-ci-disabled.outcome }}" != "failure" ]]; then
+            echo "::error::The run_ci=false fixture should fail when downstream jobs run."
+            exit 1
+          fi
       - name: Summarize remote action integration
         if: ${{ always() }}
         run: |
@@ -347,9 +407,12 @@ jobs:
           - Passing file list:
             - `ci-main-success.json`
             - `ci-main-pages.json`
+            - `ci-main-noop.json`
           - Expected failing fixtures:
             - `ci-non-main-ref.json`
             - `ci-build-skipped.json`
+            - `ci-pages-enabled-but-skipped.json`
+            - `ci-run-ci-disabled-build-ran.json`
           EOF
 
   docker:

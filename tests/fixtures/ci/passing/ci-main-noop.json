@@ -1,26 +1,26 @@
 {
   "run": {
     "workflow": "ci.yml",
-    "ref": "feature/self-hosted-fixtures",
+    "ref": "main",
     "jobs": {
       "detect-changes": {
         "result": "success",
         "outputs": {
-          "run_ci": "true",
+          "run_ci": "false",
           "run_pages": "false"
         }
       },
       "lint": {
-        "result": "success"
+        "result": "skipped"
       },
       "build": {
-        "result": "success"
+        "result": "skipped"
       },
       "tests": {
-        "result": "success"
+        "result": "skipped"
       },
       "docker": {
-        "result": "success"
+        "result": "skipped"
       },
       "pages": {
         "result": "skipped"
