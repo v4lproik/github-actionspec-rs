@@ -30,7 +30,7 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
-  font-family: "Manrope", "Avenir Next", "Segoe UI", sans-serif;
+  font-family: "Sora", "Avenir Next", "Segoe UI", sans-serif;
   color: var(--ink);
   background: linear-gradient(180deg, #f8fafc 0%, var(--bg) 100%);
 }
@@ -107,15 +107,18 @@ pre {
   place-items: center;
   width: 2rem;
   height: 2rem;
-  border-radius: 0.75rem;
-  background: rgba(255, 255, 255, 0.94);
-  color: #0f1520;
-  font-size: 0.86rem;
-  text-transform: lowercase;
+  border-radius: 0.8rem;
+  overflow: hidden;
+}
+
+.brand-logo {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .brand-text {
-  font-size: 0.96rem;
+  font-size: 0.92rem;
 }
 
 .site-nav {
@@ -146,6 +149,26 @@ pre {
   padding-top: 1.1rem;
 }
 
+.product-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-bottom: 1rem;
+  padding: 0.42rem 0.7rem 0.42rem 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(245, 247, 251, 0.82);
+  font-size: 0.74rem;
+  letter-spacing: 0.02em;
+}
+
+.product-chip-logo {
+  display: block;
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
 .eyebrow,
 .summary-kicker,
 .flow-label {
@@ -170,7 +193,7 @@ pre {
 }
 
 .hero h1 {
-  font-size: clamp(2.7rem, 5vw, 4.35rem);
+  font-size: clamp(2.55rem, 4.8vw, 4rem);
   line-height: 0.98;
 }
 
@@ -178,7 +201,7 @@ pre {
   max-width: 42rem;
   margin: 1rem auto 0;
   color: rgba(245, 247, 251, 0.74);
-  font-size: 1rem;
+  font-size: 0.96rem;
   line-height: 1.68;
 }
 
@@ -312,8 +335,8 @@ pre {
 .hero-proof p {
   margin: 0;
   color: rgba(245, 247, 251, 0.9);
-  font-size: 1.5rem;
-  line-height: 1.35;
+  font-size: 1.36rem;
+  line-height: 1.38;
   font-weight: 700;
 }
 
@@ -423,7 +446,7 @@ pre {
 }
 
 .summary-card h2 {
-  font-size: clamp(1.7rem, 2.7vw, 2.45rem);
+  font-size: clamp(1.62rem, 2.5vw, 2.28rem);
   line-height: 1.04;
 }
 
@@ -459,7 +482,7 @@ pre {
 
 .section-heading h2,
 .cta-panel h2 {
-  font-size: clamp(1.9rem, 3.5vw, 2.8rem);
+  font-size: clamp(1.82rem, 3.2vw, 2.55rem);
   line-height: 1.02;
 }
 
@@ -476,7 +499,7 @@ pre {
 
 .card h3 {
   margin: 0;
-  font-size: 1.06rem;
+  font-size: 1rem;
   letter-spacing: -0.03em;
 }
 
@@ -564,11 +587,11 @@ pre {
   }
 
   .hero h1 {
-    font-size: clamp(2.25rem, 12vw, 3.3rem);
+    font-size: clamp(2.1rem, 11vw, 3rem);
   }
 
   .hero-text {
-    font-size: 0.96rem;
+    font-size: 0.92rem;
   }
 
   .hero-metrics {
@@ -576,7 +599,7 @@ pre {
   }
 
   .hero-proof p {
-    font-size: 1.16rem;
+    font-size: 1.04rem;
   }
 
   .hero-stage {
