@@ -1,2 +1,4 @@
 [tools]
-rust = { version = "1.84.1", profile = "minimal", components = "clippy,rustfmt,llvm-tools" }
+gh = "2.55.0"
+rust = { version = "1.85.0", profile = "minimal", components = "clippy,rustfmt,llvm-tools" }
+"asdf:asdf-community/asdf-cue" = "0.15.0"

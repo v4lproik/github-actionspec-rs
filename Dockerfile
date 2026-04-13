@@ -1,4 +1,4 @@
-FROM rust:1.84.1-bookworm AS dev
+FROM rust:1.85.0-bookworm AS dev
 
 ARG CARGO_LLVM_COV_VERSION=0.6.15
 
@@ -9,7 +9,7 @@ RUN rustup component add clippy rustfmt llvm-tools \
 
 WORKDIR /workspace
 
-FROM rust:1.84.1-bookworm AS runtime-builder
+FROM rust:1.85.0-bookworm AS runtime-builder
 
 WORKDIR /workspace
 COPY Cargo.toml Cargo.lock ./

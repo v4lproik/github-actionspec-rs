@@ -4,6 +4,7 @@ docker-image := env_var_or_default("GITHUB_ACTIONSPEC_DOCKER_IMAGE", "github-act
 runtime-image := env_var_or_default("GITHUB_ACTIONSPEC_RUNTIME_IMAGE", "github-actionspec-rs:local")
 docker-runner := "./scripts/docker/run.sh"
 docker-runtime-runner := "./scripts/docker/run-runtime.sh"
+host-runner := "mise exec --"
 
 default:
   @just --list
@@ -82,16 +83,16 @@ ci:
   {{docker-runner}} cargo test --locked
 
 pr-create base="main":
-  gh pr create --base {{base}} --fill
+  {{host-runner}} gh pr create --base {{base}} --fill
 
 pr-create-draft base="main":
-  gh pr create --base {{base}} --fill --draft
+  {{host-runner}} gh pr create --base {{base}} --fill --draft
 
 discover repo="/Users/v4lproik/Programmation/dwarves/factmachine-monorepo":
-  mise exec -- cargo run -- discover --repo {{repo}}
+  {{host-runner}} cargo run -- discover --repo {{repo}}
 
 validate-repo repo workflow actual:
-  mise exec -- cargo run -- validate-repo --repo {{repo}} --workflow {{workflow}} --actual {{actual}}
+  {{host-runner}} cargo run -- validate-repo --repo {{repo}} --workflow {{workflow}} --actual {{actual}}
 
 validate schema contract actual:
-  mise exec -- cargo run -- validate --schema {{schema}} --contract {{contract}} --actual {{actual}}
+  {{host-runner}} cargo run -- validate --schema {{schema}} --contract {{contract}} --actual {{actual}}
