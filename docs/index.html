@@ -18,7 +18,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;700;800&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="styles.css" />
@@ -42,7 +42,7 @@
 
           <main id="top">
             <section class="hero">
-              <div class="hero-copy">
+              <div class="hero-copy hero-copy-centered">
                 <p class="eyebrow">CUE-backed workflow contracts</p>
                 <h1>Contract-check your GitHub Actions.</h1>
                 <p class="hero-text">
@@ -80,40 +80,55 @@
                 </dl>
               </div>
 
-              <aside class="hero-visual" aria-label="Validation flow">
-                <div class="flow-board">
-                  <div class="flow-card">
-                    <p class="flow-label">Declarations</p>
-                    <pre><code>.github/actionspec/
-build-infrastructure/
-staging.cue</code></pre>
-                  </div>
-                  <span class="flow-link" aria-hidden="true"></span>
-                  <div class="flow-card">
-                    <p class="flow-label">Actual payloads</p>
-                    <pre><code>.github/actionspec-artifacts/
-staging.json
-production.json</code></pre>
-                  </div>
-                  <span class="flow-link" aria-hidden="true"></span>
-                  <div class="flow-card flow-card-result">
-                    <p class="flow-label">Validation</p>
-                    <pre><code>validate-repo
-workflow: build-infrastructure.yml
-status: pass</code></pre>
-                  </div>
+              <div class="hero-code-window" aria-label="Product preview">
+                <div class="code-window-tabs">
+                  <span class="code-tab code-tab-active">validate-repo.sh</span>
+                  <span class="code-tab">staging.cue</span>
+                  <span class="code-tab">run payloads</span>
                 </div>
-
-                <div class="hero-command">
-                  <p class="panel-label">Fastest path</p>
-                  <pre><code>docker run --rm -v "$PWD:/workspace" \
+                <pre class="code-window-body"><code>docker run --rm -v "$PWD:/workspace" \
   docker.io/valproik/github-actionspec-rs:latest \
   validate-repo \
   --repo /workspace \
   --workflow build-infrastructure.yml \
-  --actual /workspace/.github/actionspec-artifacts/*.json</code></pre>
+  --actual /workspace/.github/actionspec-artifacts/*.json
+
+validated build-infrastructure.yml
+against .github/actionspec/build-infrastructure/staging.cue</code></pre>
+                <div class="code-window-footer">
+                  <span class="status-pill">CLI</span>
+                  <span class="status-pill">GitHub Action</span>
+                  <span class="status-pill">Runtime image</span>
                 </div>
-              </aside>
+              </div>
+
+              <div class="hero-proof">
+                <p>
+                  Keep declarations in the repository, validate the payloads your workflows
+                  actually emit, and use the same contract surface locally and in CI.
+                </p>
+              </div>
+
+              <div class="hero-stage" aria-label="Validation flow">
+                <div class="hero-stage-grid" aria-hidden="true"></div>
+                <div class="hero-stage-lane hero-stage-lane-left">
+                  <div class="stage-tile">declaration.cue</div>
+                  <div class="stage-tile">workflow name</div>
+                  <div class="stage-tile">schema</div>
+                </div>
+                <div class="hero-stage-lane hero-stage-lane-right">
+                  <div class="stage-tile">staging.json</div>
+                  <div class="stage-tile">production.json</div>
+                  <div class="stage-tile">artifact glob</div>
+                </div>
+                <div class="stage-focus">
+                  <p class="flow-label">Validation output</p>
+                  <pre><code>validate-repo
+workflow: build-infrastructure.yml
+contract: staging.cue
+result: pass</code></pre>
+                </div>
+              </div>
             </section>
           </main>
         </div>
