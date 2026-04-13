@@ -25,13 +25,13 @@ jobs:
             recipe: test
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Install just
         uses: taiki-e/install-action@v2
         with:
           tool: just
       - name: Install mise tools
-        uses: jdx/mise-action@v3
+        uses: jdx/mise-action@v4
       - name: Run ${{ matrix.recipe }}
         run: just ${{ matrix.recipe }}
 
@@ -45,13 +45,13 @@ jobs:
       id-token: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Install just and cargo-llvm-cov
         uses: taiki-e/install-action@v2
         with:
           tool: just,cargo-llvm-cov
       - name: Install mise tools
-        uses: jdx/mise-action@v3
+        uses: jdx/mise-action@v4
       - name: Generate coverage
         run: just coverage-ci
       - name: Upload coverage to Codecov

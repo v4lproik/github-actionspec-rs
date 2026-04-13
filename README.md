@@ -1,5 +1,8 @@
 # github-actionspec-rs
 
+[![CI](https://github.com/v4lproik/github-actionspec-rs/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/v4lproik/github-actionspec-rs/actions/workflows/ci.yml)
+[![Codecov](https://codecov.io/gh/v4lproik/github-actionspec-rs/branch/main/graph/badge.svg)](https://codecov.io/gh/v4lproik/github-actionspec-rs)
+
 Rust implementation of the GitHub Actions workflow contract validator.
 
 It keeps CUE as the intermediate language and uses the `cue` CLI for validation.
