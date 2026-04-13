@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>github-actionspec-rs</title>
+    <meta
+      name="description"
+      content="Validate GitHub Actions workflow contracts expressed in CUE with a fast Rust CLI, a reusable GitHub Action, and a runtime image that bundles cue."
+    />
+    <meta property="og:title" content="github-actionspec-rs" />
+    <meta
+      property="og:description"
+      content="Treat GitHub Actions workflows like contracts. Discover declarations, validate payloads, and ship safer automation."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://v4lproik.github.io/github-actionspec-rs/" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Public+Sans:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="site-frame">
+      <section class="hero-shell">
+        <div class="page-shell">
+          <header class="site-header">
+            <a class="brand" href="#top" aria-label="github-actionspec-rs home">
+              <span class="brand-mark">
+                <img class="brand-logo" src="logo-mark.svg" alt="" />
+              </span>
+              <span class="brand-text">github-actionspec-rs</span>
+            </a>
+            <nav class="site-nav" aria-label="Primary">
+              <a href="#overview">Overview</a>
+              <a href="#usage">Usage</a>
+              <a href="#contract">Contract</a>
+              <a href="https://github.com/v4lproik/github-actionspec-rs">GitHub</a>
+            </nav>
+          </header>
+
+          <main id="top">
+            <section class="hero">
+              <div class="hero-copy hero-copy-centered">
+                <div class="product-chip">
+                  <img class="product-chip-logo" src="logo-mark.svg" alt="" />
+                  <span>GitHub Actions contracts</span>
+                </div>
+                <h1>Validate GitHub Actions <span class="warm-accent">contracts.</span></h1>
+                <p class="hero-text">
+                  Define contracts in <code>CUE</code>. Validate real workflow payloads with a
+                  CLI, a GitHub Action, or a runtime image that already includes <code>cue</code>.
+                </p>
+                <div class="hero-actions">
+                  <a
+                    class="button button-primary"
+                    href="https://github.com/v4lproik/github-actionspec-rs#readme"
+                  >
+                    Read docs
+                  </a>
+                  <a
+                    class="button button-secondary"
+                    href="https://hub.docker.com/r/valproik/github-actionspec-rs"
+                  >
+                    Docker image
+                  </a>
+                </div>
+                <dl class="hero-metrics">
+                  <div>
+                    <dt>Run with</dt>
+                    <dd>CLI, action, image</dd>
+                  </div>
+                  <div>
+                    <dt>Contract</dt>
+                    <dd>CUE in repo</dd>
+                  </div>
+                  <div>
+                    <dt>Input</dt>
+                    <dd>files, folders, globs</dd>
+                  </div>
+                </dl>
+              </div>
+
+              <div class="hero-code-window" aria-label="Product preview">
+                <div class="code-window-tabs">
+                  <span class="code-tab code-tab-active">validate-repo</span>
+                  <span class="code-tab">contract.cue</span>
+                  <span class="code-tab">payloads</span>
+                </div>
+                <pre class="code-window-body"><code>docker run --rm -v "$PWD:/workspace" \
+  docker.io/valproik/github-actionspec-rs:latest \
+  validate-repo \
+  --repo /workspace \
+  --workflow ci.yml \
+  --actual /workspace/.github/actionspec-artifacts/*.json
+
+validated ci.yml
+against .github/actionspec/ci/main.cue</code></pre>
+                <div class="code-window-footer">
+                  <span class="status-pill">CLI</span>
+                  <span class="status-pill">GitHub Action</span>
+                  <span class="status-pill">Runtime image</span>
+                </div>
+              </div>
+
+              <div class="hero-proof">
+                <p>
+                  Keep contracts in the repo. Validate the payloads your workflows actually emit.
+                </p>
+              </div>
+            </section>
+          </main>
+        </div>
+      </section>
+
+      <div class="page-shell page-shell-body">
+        <section id="overview" class="section-grid">
+          <article class="summary-card">
+            <p class="summary-kicker">What it does</p>
+            <h2>Keep contracts next to the workflows they describe.</h2>
+            <p>
+              Store declarations under <code>.github/actionspec</code>, resolve them by workflow
+              name, and validate the JSON payloads your jobs already produce.
+            </p>
+            <div class="summary-tags">
+              <span>discover</span>
+              <span>validate-repo</span>
+              <span>github action</span>
+            </div>
+          </article>
+          <article class="summary-card summary-card-secondary">
+            <p class="summary-kicker">Why it helps</p>
+            <ul class="clean-list">
+              <li>Catch workflow drift before it breaks automation.</li>
+              <li>Use the same validation flow locally and in CI.</li>
+              <li>Start with one workflow and one payload.</li>
+            </ul>
+          </article>
+        </section>
+
+        <section id="usage" class="content-section content-section-showcase">
+          <div class="section-heading">
+            <p class="eyebrow">Three ways in</p>
+            <h2>Run it where you need it.</h2>
+          </div>
+          <div class="feature-grid">
+            <article class="card">
+              <p class="card-kicker">Inspect</p>
+              <h3>Discover declarations</h3>
+              <p>Scan a repository and map workflows to declarations.</p>
+              <pre><code>github-actionspec discover --repo /path/to/repo</code></pre>
+            </article>
+            <article class="card card-featured">
+              <p class="card-kicker">Most direct</p>
+              <h3>Validate from the repo root</h3>
+              <p>Resolve one workflow and validate one or many payloads.</p>
+              <pre><code>github-actionspec validate-repo \
+  --repo /path/to/repo \
+  --workflow ci.yml \
+  --actual .github/actionspec-artifacts/**/*.json</code></pre>
+            </article>
+            <article class="card">
+              <p class="card-kicker">Automate</p>
+              <h3>Use the GitHub Action</h3>
+              <p>Run the same check in CI with minimal wrapper logic.</p>
+              <pre><code>- uses: v4lproik/github-actionspec-rs@main
+  with:
+    repo: .
+    workflow: ci.yml
+    actual: .github/actionspec-artifacts/**/*.json</code></pre>
+            </article>
+          </div>
+        </section>
+
+        <section id="contract" class="content-section two-column">
+          <div class="section-heading compact">
+            <p class="eyebrow">Contract shape</p>
+            <h2>Readable enough to review. Strict enough to enforce.</h2>
+            <p>
+              Keep the validation rules in CUE instead of spreading them across shell checks.
+            </p>
+          </div>
+
+          <div class="code-stack">
+            <article class="code-card">
+              <p class="code-title">Declaration</p>
+              <pre><code>package actionspec
+
+workflow: "ci.yml"
+
+run: #Declaration.run & {
+  workflow: workflow
+  jobs: {
+    sample: {
+      result: "success"
+    }
+  }
+}</code></pre>
+            </article>
+            <article class="code-card code-card-dark">
+              <p class="code-title">One-step workflow usage</p>
+              <pre><code>- uses: actions/checkout@v6
+
+- uses: v4lproik/github-actionspec-rs@main
+  with:
+    repo: .
+    workflow: ci.yml
+    actual: .github/actionspec-artifacts/**/*.json</code></pre>
+            </article>
+          </div>
+        </section>
+
+        <section class="cta-panel">
+          <p class="eyebrow">Start small</p>
+          <h2>Start with one workflow and one payload.</h2>
+          <p>
+            Keep the command surface small with <code>just</code>, use the runtime image when you
+            do not want local setup, and run the same checks in CI through the action.
+          </p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="https://github.com/v4lproik/github-actionspec-rs">
+              Browse source
+            </a>
+            <a
+              class="button button-secondary"
+              href="https://hub.docker.com/r/valproik/github-actionspec-rs"
+            >
+              Open Docker Hub
+            </a>
+          </div>
+        </section>
+      </div>
+    </div>
+  </body>
+</html>

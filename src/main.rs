@@ -1,0 +1,94 @@
+use clap::Parser;
+use github_actionspec_rs::cli::{Cli, Command};
+use github_actionspec_rs::discovery::discover_declarations;
+use github_actionspec_rs::validate::{
+    validate_contract, validate_repo_workflow, ValidateContractOptions, ValidateRepoWorkflowOptions,
+};
+use std::path::PathBuf;
+
+fn main() {
+    if let Err(error) = run() {
+        eprintln!("{error}");
+        std::process::exit(1);
+    }
+}
+
+fn normalize_actual_inputs(actuals: Vec<PathBuf>) -> Vec<PathBuf> {
+    actuals
+        .into_iter()
+        .flat_map(|actual| {
+            let actual = actual.to_string_lossy();
+            actual
+                .lines()
+                .map(str::trim)
+                .filter(|segment| !segment.is_empty())
+                .map(PathBuf::from)
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+fn run() -> Result<(), github_actionspec_rs::errors::AppError> {
+    let cli = Cli::parse();
+
+    match cli.command {
+        Command::Validate {
+            schema,
+            contract,
+            actual,
+        } => {
+            validate_contract(ValidateContractOptions {
+                schema_paths: schema,
+                contract_path: contract,
+                actual_paths: normalize_actual_inputs(actual),
+                cwd: None,
+                env: None,
+            })?;
+        }
+        Command::Discover {
+            repo,
+            declarations_dir,
+        } => {
+            let declarations = discover_declarations(&repo, &declarations_dir)?;
+            println!("{}", serde_json::to_string_pretty(&declarations)?);
+        }
+        Command::ValidateRepo {
+            repo,
+            workflow,
+            actual,
+            declarations_dir,
+        } => {
+            validate_repo_workflow(ValidateRepoWorkflowOptions {
+                repo_root: repo,
+                workflow,
+                actual_paths: normalize_actual_inputs(actual),
+                declarations_dir,
+                cwd: None,
+                env: None,
+            })?;
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_actual_inputs;
+    use std::path::PathBuf;
+
+    #[test]
+    fn normalize_actual_inputs_splits_newline_separated_values() {
+        let actuals = normalize_actual_inputs(vec![PathBuf::from(
+            "fixtures/one.json\nfixtures/two.json\n",
+        )]);
+
+        assert_eq!(
+            actuals,
+            vec![
+                PathBuf::from("fixtures/one.json"),
+                PathBuf::from("fixtures/two.json"),
+            ]
+        );
+    }
+}

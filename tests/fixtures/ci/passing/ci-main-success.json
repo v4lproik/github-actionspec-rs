@@ -1,0 +1,30 @@
+{
+  "run": {
+    "workflow": "ci.yml",
+    "ref": "main",
+    "jobs": {
+      "detect-changes": {
+        "result": "success",
+        "outputs": {
+          "run_ci": "true",
+          "run_pages": "false"
+        }
+      },
+      "lint": {
+        "result": "success"
+      },
+      "build": {
+        "result": "success"
+      },
+      "tests": {
+        "result": "success"
+      },
+      "docker": {
+        "result": "success"
+      },
+      "pages": {
+        "result": "skipped"
+      }
+    }
+  }
+}
