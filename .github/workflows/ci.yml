@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -22,17 +23,28 @@ jobs:
       contents: read
       pull-requests: read
     outputs:
-      core: ${{ steps.filter.outputs.core }}
-      infra: ${{ steps.filter.outputs.infra }}
-      docs: ${{ steps.filter.outputs.docs }}
-      run_ci: ${{ steps.filter.outputs.core == 'true' || steps.filter.outputs.infra == 'true' }}
+      core: ${{ steps.manual.outputs.core || steps.filter.outputs.core }}
+      infra: ${{ steps.manual.outputs.infra || steps.filter.outputs.infra }}
+      docs: ${{ steps.manual.outputs.docs || steps.filter.outputs.docs }}
+      run_ci: ${{ steps.manual.outputs.run_ci || (steps.filter.outputs.core == 'true' || steps.filter.outputs.infra == 'true') }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
+      - name: Force CI for manual dispatch
+        id: manual
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          {
+            echo "core=false"
+            echo "infra=false"
+            echo "docs=false"
+            echo "run_ci=true"
+          } >> "${GITHUB_OUTPUT}"
       - name: Classify changed files
         id: filter
+        if: ${{ github.event_name != 'workflow_dispatch' }}
         uses: dorny/paths-filter@v3.0.2
         with:
           base: ${{ github.ref }}
@@ -42,10 +54,11 @@ jobs:
         run: |
           cat <<'EOF' >> "${GITHUB_STEP_SUMMARY}"
           ## Change Detection
-          - Core: `${{ steps.filter.outputs.core }}`
-          - Infra: `${{ steps.filter.outputs.infra }}`
-          - Docs: `${{ steps.filter.outputs.docs }}`
-          - Run CI: `${{ steps.filter.outputs.core == 'true' || steps.filter.outputs.infra == 'true' }}`
+          - Event: `${{ github.event_name }}`
+          - Core: `${{ steps.manual.outputs.core || steps.filter.outputs.core || 'false' }}`
+          - Infra: `${{ steps.manual.outputs.infra || steps.filter.outputs.infra || 'false' }}`
+          - Docs: `${{ steps.manual.outputs.docs || steps.filter.outputs.docs || 'false' }}`
+          - Run CI: `${{ steps.manual.outputs.run_ci || (steps.filter.outputs.core == 'true' || steps.filter.outputs.infra == 'true') }}`
           EOF
 
   checks:

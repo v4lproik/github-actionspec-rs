@@ -72,6 +72,7 @@ GitHub Actions must call `just`, not raw `cargo`, `gh`, or `mise` command sequen
 
 - The workflow starts with a `detect-changes` job powered by `dorny/paths-filter` and filter rules stored in `.github/filters/changes.yml`.
 - Build, lint, test, coverage, runtime verification, and publish only run when `core` or `infra` changed.
+- The workflow can also be started manually through `workflow_dispatch`; manual runs force the full CI path even if no matching file changes are present.
 - Build: `just build`
 - Lint: `just lint`
 - Test: `just test`
