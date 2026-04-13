@@ -61,6 +61,36 @@ fn validates_repo_contract_directory_through_cli() {
 }
 
 #[test]
+fn validates_repo_contract_globbed_actuals_through_cli() {
+    let repo = tempdir().unwrap();
+    support::write_declaration(
+        repo.path(),
+        ".github/actionspec/build-infrastructure/staging.cue",
+        "build-infrastructure.yml",
+    );
+    let actual_dir = repo.path().join("actuals");
+    std::fs::create_dir_all(&actual_dir).unwrap();
+    let actual_one = actual_dir.join("actual-one.json");
+    let actual_two = actual_dir.join("actual-two.json");
+    support::write_actual(&actual_one, "build-infrastructure.yml");
+    support::write_actual(&actual_two, "build-infrastructure.yml");
+    let env = support::install_fake_cue(&repo, "success");
+
+    let mut command = Command::cargo_bin("github-actionspec").unwrap();
+    command
+        .envs(env)
+        .arg("validate-repo")
+        .arg("--repo")
+        .arg(repo.path())
+        .arg("--workflow")
+        .arg("build-infrastructure.yml")
+        .arg("--actual")
+        .arg(actual_dir.join("*.json"));
+
+    command.assert().success();
+}
+
+#[test]
 fn discovers_repo_contracts_through_cli() {
     let repo = tempdir().unwrap();
     support::write_declaration(

@@ -9,7 +9,7 @@ inputs:
     description: Workflow file name to validate, for example build-infrastructure.yml.
     required: true
   actual:
-    description: Path to a normalized workflow run JSON payload, a directory of JSON payloads, or a newline-separated list of payload paths.
+    description: Path to a normalized workflow run JSON payload, a directory of JSON payloads, a glob pattern, or a newline-separated list of payload paths or glob patterns.
     required: true
   declarations-dir:
     description: Path to the declarations directory inside the target repository.

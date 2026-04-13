@@ -31,6 +31,12 @@ pub enum AppError {
     #[error("No readable JSON files were found under directory: {0}")]
     NoActualFilesFound(PathBuf),
 
+    #[error("No files matched actual glob pattern: {0}")]
+    NoActualGlobMatches(String),
+
+    #[error(transparent)]
+    GlobPattern(#[from] glob::PatternError),
+
     #[error(transparent)]
     Io(#[from] std::io::Error),
 

@@ -47,8 +47,8 @@ just validate-repo /path/to/repo build-infrastructure.yml /path/to/actual.json
 Commands:
 
 - `github-actionspec discover --repo <path>`
-- `github-actionspec validate --schema <file> --schema <file> --contract <file> --actual <file>`
-- `github-actionspec validate-repo --repo <path> --workflow <name> --actual <file>`
+- `github-actionspec validate --schema <file> --schema <file> --contract <file> --actual <file-or-glob>`
+- `github-actionspec validate-repo --repo <path> --workflow <name> --actual <file-dir-or-glob>`
 
 ## GitHub Action
 
@@ -69,7 +69,7 @@ Inputs:
 
 - `repo`: target repository root containing `.github/actionspec` declarations. Defaults to `.`
 - `workflow`: workflow file name to validate
-- `actual`: path to one normalized workflow run JSON payload, a directory containing JSON payloads, or a newline-separated list of payload paths
+- `actual`: path to one normalized workflow run JSON payload, a directory containing JSON payloads, a glob pattern, or a newline-separated list of payloads and glob patterns
 - `declarations-dir`: custom declarations directory. Defaults to `.github/actionspec`
 
 Examples:
@@ -97,6 +97,13 @@ Examples:
     actual: |
       .github/actionspec-artifacts/staging.json
       .github/actionspec-artifacts/production.json
+
+- name: Validate payloads through a glob pattern
+  uses: v4lproik/github-actionspec-rs@main
+  with:
+    repo: .
+    workflow: build-infrastructure.yml
+    actual: .github/actionspec-artifacts/**/*.json
 ```
 
 ## Coverage
@@ -125,14 +132,14 @@ This emits `target/llvm-cov/lcov.info`, which the repository workflow uploads to
 GitHub Actions must call `just`, not raw `cargo`, `gh`, or `mise` command sequences.
 
 - The workflow starts with a `detect-changes` job powered by `dorny/paths-filter` and filter rules stored in `.github/filters/changes.yml`.
-- Build, lint, test, local action smoke, coverage, runtime verification, and publish only run when `core` or `infra` changed.
+- Build, lint, test, remote action integration, runtime verification, docker publish, and Pages run in that order when the relevant change filters match.
 - The workflow can also be started manually through `workflow_dispatch`; manual runs force the full CI path even if no matching file changes are present.
 - Build: `just build`
 - Lint: `just lint`
 - Test: `just test`
 - Coverage upload: `just coverage-ci`
 - Local full pass: `just ci`
-- `CI Test` is a separate workflow that checks out the fixture repository data from this repo and validates the published `v4lproik/github-actionspec-rs@main` action reference end to end.
+- The remote action integration check now lives inside the main `CI` workflow and validates the published `v4lproik/github-actionspec-rs@main` action reference end to end on pushes to `main`.
 
 ## Docker Parity
 
