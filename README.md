@@ -70,6 +70,8 @@ This emits `target/llvm-cov/lcov.info`, which the repository workflow uploads to
 
 GitHub Actions must call `just`, not raw `cargo`, `gh`, or `mise` command sequences.
 
+- The workflow starts with a `detect-changes` job powered by `dorny/paths-filter` and filter rules stored in `.github/filters/changes.yml`.
+- Build, lint, test, coverage, runtime verification, and publish only run when `core` or `infra` changed.
 - Build: `just build`
 - Lint: `just lint`
 - Test: `just test`

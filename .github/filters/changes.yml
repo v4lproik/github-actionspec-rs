@@ -1,0 +1,20 @@
+core:
+  - 'src/**'
+  - 'tests/**'
+  - 'schema/**'
+  - 'Cargo.toml'
+  - 'Cargo.lock'
+
+infra:
+  - '.github/**'
+  - 'scripts/docker/**'
+  - 'Dockerfile'
+  - 'docker-bake.hcl'
+  - 'justfile'
+  - '.dockerignore'
+  - '.gitignore'
+  - '.mise.toml'
+
+docs:
+  - 'README.md'
+  - 'AGENTS.md'

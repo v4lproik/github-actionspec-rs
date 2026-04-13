@@ -14,10 +14,46 @@ permissions:
   contents: read
 
 jobs:
-  checks:
+  detect-changes:
     if: ${{ !cancelled() }}
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      core: ${{ steps.filter.outputs.core }}
+      infra: ${{ steps.filter.outputs.infra }}
+      docs: ${{ steps.filter.outputs.docs }}
+      run_ci: ${{ steps.filter.outputs.core == 'true' || steps.filter.outputs.infra == 'true' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Classify changed files
+        id: filter
+        uses: dorny/paths-filter@v3.0.2
+        with:
+          base: ${{ github.ref }}
+          filters: .github/filters/changes.yml
+
+      - name: Summarize detected changes
+        run: |
+          cat <<'EOF' >> "${GITHUB_STEP_SUMMARY}"
+          ## Change Detection
+          - Core: `${{ steps.filter.outputs.core }}`
+          - Infra: `${{ steps.filter.outputs.infra }}`
+          - Docs: `${{ steps.filter.outputs.docs }}`
+          - Run CI: `${{ steps.filter.outputs.core == 'true' || steps.filter.outputs.infra == 'true' }}`
+          EOF
+
+  checks:
+    if: ${{ !cancelled() && needs.detect-changes.outputs.run_ci == 'true' }}
     name: ${{ matrix.name }}
     runs-on: ubuntu-latest
+    needs:
+      - detect-changes
     strategy:
       fail-fast: false
       matrix:
@@ -43,10 +79,11 @@ jobs:
         run: just ${{ matrix.recipe }}
 
   coverage:
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && needs.detect-changes.outputs.run_ci == 'true' }}
     name: Coverage
     runs-on: ubuntu-latest
     needs:
+      - detect-changes
       - checks
     permissions:
       contents: read
@@ -70,10 +107,11 @@ jobs:
           files: ./target/llvm-cov/lcov.info
 
   publish-runtime:
-    if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.checks.result == 'success' && needs.coverage.result == 'success' && secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
+    if: ${{ !cancelled() && needs.detect-changes.outputs.run_ci == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.checks.result == 'success' && needs.coverage.result == 'success' && secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
     name: Publish Runtime Image
     runs-on: ubuntu-latest
     needs:
+      - detect-changes
       - checks
       - coverage
     steps:
