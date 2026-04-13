@@ -175,6 +175,7 @@ esac
         )
         .env("INPUT_REPORT_FILE", &report_file)
         .env("INPUT_DASHBOARD_FILE", &dashboard_file)
+        .env("INPUT_COMMENT_PR", "true")
         .env("INPUT_COMMENT_TITLE", "Workflow Matrix Dashboard")
         .env("INPUT_COMMENT_TAG", "test-matrix")
         .env("INPUT_GITHUB_TOKEN", "token")

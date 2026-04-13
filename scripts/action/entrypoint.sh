@@ -56,7 +56,7 @@ render_pr_summary() {
 }
 
 upsert_pr_comment() {
-  if [ "$(lower_bool "${INPUT_COMMENT_PR:-true}")" != "true" ]; then
+  if [ "$(lower_bool "${INPUT_COMMENT_PR:-false}")" != "true" ]; then
     return
   fi
 

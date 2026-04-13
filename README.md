@@ -95,7 +95,7 @@ Inputs:
 - `baseline-report`: optional path to a previous JSON validation report used to compute matrix diffs
 - `dashboard-file`: path where the action writes the markdown matrix dashboard. Defaults to `/github/runner_temp/github-actionspec-dashboard/current/dashboard.md`
 - `write-summary`: whether to append the matrix dashboard to the job summary. Defaults to `true`
-- `comment-pr`: whether to upsert a PR comment containing a short validation summary and the full matrix dashboard. Defaults to `true`
+- `comment-pr`: whether to upsert a PR comment containing a short validation summary and the full matrix dashboard. Defaults to `false`
 - `comment-title`: title used for the PR comment. Defaults to `Workflow Matrix Dashboard`
 - `comment-tag`: stable marker used to find and update the existing PR comment. Defaults to `github-actionspec-matrix`
 - `github-token`: token used for PR comment upserts when `comment-pr` is enabled
