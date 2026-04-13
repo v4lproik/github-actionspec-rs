@@ -120,7 +120,7 @@ jobs:
           files: ./target/llvm-cov/lcov.info
 
   publish-runtime:
-    if: ${{ !cancelled() && needs.detect-changes.outputs.run_ci == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.checks.result == 'success' && needs.coverage.result == 'success' && secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
+    if: ${{ !cancelled() && needs.detect-changes.outputs.run_ci == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.checks.result == 'success' && needs.coverage.result == 'success' }}
     name: Publish Runtime Image
     runs-on: ubuntu-latest
     needs:
@@ -136,10 +136,26 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: just
+      - name: Check publish credentials
+        id: publish-check
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [[ -n "${DOCKERHUB_USERNAME}" && -n "${DOCKERHUB_TOKEN}" ]]; then
+            echo "enabled=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "enabled=false" >> "${GITHUB_OUTPUT}"
+          fi
       - name: Log in to Docker Hub
+        if: ${{ steps.publish-check.outputs.enabled == 'true' }}
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Publish runtime image
+        if: ${{ steps.publish-check.outputs.enabled == 'true' }}
         run: just docker-push-runtime docker.io/v4lproik/github-actionspec-rs:latest
+      - name: Skip publish when credentials are missing
+        if: ${{ steps.publish-check.outputs.enabled != 'true' }}
+        run: echo "Docker Hub credentials are not configured; skipping runtime image publish."
