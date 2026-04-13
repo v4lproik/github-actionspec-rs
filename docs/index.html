@@ -150,8 +150,13 @@ result: pass</code></pre>
               workflow name, and can be validated against the same JSON payloads your workflows
               actually produce.
             </p>
+            <div class="summary-tags">
+              <span>discover</span>
+              <span>validate-repo</span>
+              <span>github action</span>
+            </div>
           </article>
-          <article class="summary-card">
+          <article class="summary-card summary-card-secondary">
             <p class="summary-kicker">Why it helps</p>
             <ul class="clean-list">
               <li>Catch drift before a workflow change becomes operational breakage.</li>
@@ -161,18 +166,20 @@ result: pass</code></pre>
           </article>
         </section>
 
-        <section id="usage" class="content-section">
+        <section id="usage" class="content-section content-section-showcase">
           <div class="section-heading">
             <p class="eyebrow">Three ways in</p>
             <h2>Use the interface that fits the way your team already works.</h2>
           </div>
           <div class="feature-grid">
             <article class="card">
+              <p class="card-kicker">Inspect</p>
               <h3>Discover declarations</h3>
               <p>Scan a repository and map workflow files to contract declarations.</p>
               <pre><code>github-actionspec discover --repo /path/to/repo</code></pre>
             </article>
-            <article class="card">
+            <article class="card card-featured">
+              <p class="card-kicker">Most direct</p>
               <h3>Validate from the repo root</h3>
               <p>Resolve the matching declaration for a workflow and validate one or many payloads.</p>
               <pre><code>github-actionspec validate-repo \
@@ -181,6 +188,7 @@ result: pass</code></pre>
   --actual .github/actionspec-artifacts/**/*.json</code></pre>
             </article>
             <article class="card">
+              <p class="card-kicker">Automate</p>
               <h3>Use the GitHub Action</h3>
               <p>Drop the same validation flow into CI with minimal wrapper logic.</p>
               <pre><code>- uses: v4lproik/github-actionspec-rs@main
@@ -218,7 +226,7 @@ run: #Declaration.run & {
   }
 }</code></pre>
             </article>
-            <article class="code-card">
+            <article class="code-card code-card-dark">
               <p class="code-title">One-step workflow usage</p>
               <pre><code>- uses: actions/checkout@v6
 
