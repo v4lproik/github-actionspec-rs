@@ -24,108 +24,136 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <div class="page-shell">
-      <header class="site-header">
-        <a class="brand" href="#top" aria-label="github-actionspec-rs home">
-          <span class="brand-mark">ga</span>
-          <span class="brand-text">github-actionspec-rs</span>
-        </a>
-        <nav class="site-nav" aria-label="Primary">
-          <a href="#overview">Overview</a>
-          <a href="#usage">Usage</a>
-          <a href="#contract">Contract</a>
-          <a href="https://github.com/v4lproik/github-actionspec-rs">GitHub</a>
-        </nav>
-      </header>
+    <div class="site-frame">
+      <section class="hero-shell">
+        <div class="page-shell">
+          <header class="site-header">
+            <a class="brand" href="#top" aria-label="github-actionspec-rs home">
+              <span class="brand-mark">ga</span>
+              <span class="brand-text">github-actionspec-rs</span>
+            </a>
+            <nav class="site-nav" aria-label="Primary">
+              <a href="#overview">Overview</a>
+              <a href="#usage">Usage</a>
+              <a href="#contract">Contract</a>
+              <a href="https://github.com/v4lproik/github-actionspec-rs">GitHub</a>
+            </nav>
+          </header>
 
-      <main id="top">
-        <section class="hero">
-          <div class="hero-copy">
-            <p class="eyebrow">CUE-backed workflow contracts</p>
-            <h1>Validate GitHub Actions with less setup and fewer blind spots.</h1>
-            <p class="hero-text">
-              <code>github-actionspec-rs</code> gives teams a Rust CLI, a GitHub Action, and a
-              runtime image for checking real workflow payloads against repository-owned CUE
-              declarations.
-            </p>
-            <div class="hero-actions">
-              <a
-                class="button button-primary"
-                href="https://github.com/v4lproik/github-actionspec-rs#readme"
-              >
-                Read the README
-              </a>
-              <a
-                class="button button-secondary"
-                href="https://hub.docker.com/r/valproik/github-actionspec-rs"
-              >
-                Open Docker Hub
-              </a>
-            </div>
-            <dl class="hero-metrics">
-              <div>
-                <dt>Language</dt>
-                <dd>Rust + CUE</dd>
+          <main id="top">
+            <section class="hero">
+              <div class="hero-copy">
+                <p class="eyebrow">CUE-backed workflow contracts</p>
+                <h1>Contract-check your GitHub Actions.</h1>
+                <p class="hero-text">
+                  <code>github-actionspec-rs</code> helps teams validate real workflow payloads
+                  against repository-owned CUE declarations through a Rust CLI, a GitHub Action,
+                  and a runtime image that already bundles <code>cue</code>.
+                </p>
+                <div class="hero-actions">
+                  <a
+                    class="button button-primary"
+                    href="https://github.com/v4lproik/github-actionspec-rs#readme"
+                  >
+                    Read the README
+                  </a>
+                  <a
+                    class="button button-secondary"
+                    href="https://hub.docker.com/r/valproik/github-actionspec-rs"
+                  >
+                    Pull runtime image
+                  </a>
+                </div>
+                <dl class="hero-metrics">
+                  <div>
+                    <dt>Interface</dt>
+                    <dd>CLI, Action, Runtime</dd>
+                  </div>
+                  <div>
+                    <dt>Contracts</dt>
+                    <dd>CUE in-repo</dd>
+                  </div>
+                  <div>
+                    <dt>Inputs</dt>
+                    <dd>file, dir, glob</dd>
+                  </div>
+                </dl>
               </div>
-              <div>
-                <dt>Integrations</dt>
-                <dd>CLI, Action, Runtime</dd>
-              </div>
-              <div>
-                <dt>Contract location</dt>
-                <dd><code>.github/actionspec</code></dd>
-              </div>
-            </dl>
-          </div>
 
-          <aside class="hero-panel" aria-label="Command example">
-            <p class="panel-label">Fastest path</p>
-            <pre><code>docker run --rm -v "$PWD:/workspace" \
+              <aside class="hero-visual" aria-label="Validation flow">
+                <div class="flow-board">
+                  <div class="flow-card">
+                    <p class="flow-label">Declarations</p>
+                    <pre><code>.github/actionspec/
+build-infrastructure/
+staging.cue</code></pre>
+                  </div>
+                  <span class="flow-link" aria-hidden="true"></span>
+                  <div class="flow-card">
+                    <p class="flow-label">Actual payloads</p>
+                    <pre><code>.github/actionspec-artifacts/
+staging.json
+production.json</code></pre>
+                  </div>
+                  <span class="flow-link" aria-hidden="true"></span>
+                  <div class="flow-card flow-card-result">
+                    <p class="flow-label">Validation</p>
+                    <pre><code>validate-repo
+workflow: build-infrastructure.yml
+status: pass</code></pre>
+                  </div>
+                </div>
+
+                <div class="hero-command">
+                  <p class="panel-label">Fastest path</p>
+                  <pre><code>docker run --rm -v "$PWD:/workspace" \
   docker.io/valproik/github-actionspec-rs:latest \
   validate-repo \
   --repo /workspace \
   --workflow build-infrastructure.yml \
   --actual /workspace/.github/actionspec-artifacts/*.json</code></pre>
-            <p class="panel-note">
-              The runtime image bundles <code>github-actionspec</code> and <code>cue</code>, so
-              first adoption can stay lightweight.
-            </p>
-          </aside>
-        </section>
+                </div>
+              </aside>
+            </section>
+          </main>
+        </div>
+      </section>
 
+      <div class="page-shell page-shell-body">
         <section id="overview" class="section-grid">
           <article class="summary-card">
-            <p class="summary-kicker">Why it exists</p>
-            <h2>Workflows are infrastructure and deserve contract checks.</h2>
+            <p class="summary-kicker">What it does</p>
+            <h2>Keep workflow contracts close to the automation they describe.</h2>
             <p>
-              Keep declarations inside the repository, discover them by workflow name, and validate
-              actual JSON payloads before hidden drift turns into broken automation.
+              Declarations live under <code>.github/actionspec</code>, can be discovered by
+              workflow name, and can be validated against the same JSON payloads your workflows
+              actually produce.
             </p>
           </article>
           <article class="summary-card">
-            <p class="summary-kicker">What it improves</p>
+            <p class="summary-kicker">Why it helps</p>
             <ul class="clean-list">
-              <li>Contracts live next to the workflows they describe.</li>
-              <li>The same command surface works locally and in CI.</li>
-              <li>Teams can validate one file, a directory, a glob, or an explicit list.</li>
+              <li>Catch drift before a workflow change becomes operational breakage.</li>
+              <li>Run the same validation surface locally, in CI, and through the action.</li>
+              <li>Adopt incrementally with one workflow and one real payload first.</li>
             </ul>
           </article>
         </section>
 
         <section id="usage" class="content-section">
           <div class="section-heading">
-            <p class="eyebrow">Three ways to use it</p>
-            <h2>Pick the interface that matches how your team already works.</h2>
+            <p class="eyebrow">Three ways in</p>
+            <h2>Use the interface that fits the way your team already works.</h2>
           </div>
           <div class="feature-grid">
             <article class="card">
               <h3>Discover declarations</h3>
-              <p>Map workflow files to repository-owned CUE declarations without manual lookup.</p>
+              <p>Scan a repository and map workflow files to contract declarations.</p>
               <pre><code>github-actionspec discover --repo /path/to/repo</code></pre>
             </article>
             <article class="card">
               <h3>Validate from the repo root</h3>
-              <p>Resolve the right declaration for a workflow and validate incoming payloads.</p>
+              <p>Resolve the matching declaration for a workflow and validate one or many payloads.</p>
               <pre><code>github-actionspec validate-repo \
   --repo /path/to/repo \
   --workflow build-infrastructure.yml \
@@ -133,7 +161,7 @@
             </article>
             <article class="card">
               <h3>Use the GitHub Action</h3>
-              <p>Run the same validation flow from a workflow with minimal wrapper code.</p>
+              <p>Drop the same validation flow into CI with minimal wrapper logic.</p>
               <pre><code>- uses: v4lproik/github-actionspec-rs@main
   with:
     repo: .
@@ -146,10 +174,10 @@
         <section id="contract" class="content-section two-column">
           <div class="section-heading compact">
             <p class="eyebrow">Contract shape</p>
-            <h2>Readable enough to inspect, structured enough to trust.</h2>
+            <h2>Readable enough to inspect, structured enough to enforce.</h2>
             <p>
-              The declaration format stays close to the workflow domain instead of hiding intent in
-              shell logic.
+              The declaration layer stays close to the workflow domain instead of hiding validation
+              rules behind shell conditionals.
             </p>
           </div>
 
@@ -184,11 +212,11 @@ run: #Declaration.run & {
 
         <section class="cta-panel">
           <p class="eyebrow">Start small</p>
-          <h2>Point it at one workflow, validate one real payload, then expand from there.</h2>
+          <h2>Validate one workflow against one real payload, then expand from there.</h2>
           <p>
-            The repository keeps the operational surface compact through <code>just</code>, the
-            runtime image removes local dependency friction, and the action lets teams enforce the
-            same contract checks in CI.
+            The command surface stays compact through <code>just</code>, the runtime image removes
+            local dependency friction, and the action lets teams keep the same contract checks in
+            CI.
           </p>
           <div class="hero-actions">
             <a class="button button-primary" href="https://github.com/v4lproik/github-actionspec-rs">
@@ -198,11 +226,11 @@ run: #Declaration.run & {
               class="button button-secondary"
               href="https://hub.docker.com/r/valproik/github-actionspec-rs"
             >
-              Pull runtime image
+              Open Docker Hub
             </a>
           </div>
         </section>
-      </main>
+      </div>
     </div>
   </body>
 </html>
