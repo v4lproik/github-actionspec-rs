@@ -24,6 +24,37 @@ write_summary() {
   cat "${DASHBOARD_FILE}" >> "${GITHUB_STEP_SUMMARY}"
 }
 
+report_stat() {
+  report_path="$1"
+  status_name="$2"
+  jq -r --arg status_name "${status_name}" '[.actuals[] | select(.status == $status_name)] | length' "${report_path}"
+}
+
+render_pr_summary() {
+  current_total="$(jq -r '.actuals | length' "${REPORT_FILE}")"
+  current_passed="$(report_stat "${REPORT_FILE}" "passed")"
+  current_failed="$(report_stat "${REPORT_FILE}" "failed")"
+  workflow_name="$(jq -r '.workflow' "${REPORT_FILE}")"
+  declaration_path="$(jq -r '.declaration_path' "${REPORT_FILE}")"
+
+  printf -- '- Workflow: `%s`\n' "${workflow_name}"
+  printf -- '- Declaration: `%s`\n' "${declaration_path}"
+  printf -- '- Current: `%s` payloads, `%s` passed, `%s` failed\n' \
+    "${current_total}" "${current_passed}" "${current_failed}"
+
+  if [ -n "${BASELINE_REPORT}" ] && [ -f "${BASELINE_REPORT}" ]; then
+    baseline_total="$(jq -r '.actuals | length' "${BASELINE_REPORT}")"
+    baseline_passed="$(report_stat "${BASELINE_REPORT}" "passed")"
+    baseline_failed="$(report_stat "${BASELINE_REPORT}" "failed")"
+
+    printf -- '- Baseline: `%s` payloads, `%s` passed, `%s` failed\n' \
+      "${baseline_total}" "${baseline_passed}" "${baseline_failed}"
+    printf -- '- Delta: passed `%+d`, failed `%+d`\n' \
+      "$((current_passed - baseline_passed))" \
+      "$((current_failed - baseline_failed))"
+  fi
+}
+
 upsert_pr_comment() {
   if [ "$(lower_bool "${INPUT_COMMENT_PR:-false}")" != "true" ]; then
     return
@@ -44,6 +75,8 @@ upsert_pr_comment() {
     {
       printf '%s\n' "${marker}"
       printf '## %s\n\n' "${title}"
+      render_pr_summary
+      printf '\n'
       cat "${DASHBOARD_FILE}"
     } | jq -Rs '{body: .}'
   )"

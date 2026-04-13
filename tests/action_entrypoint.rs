@@ -81,6 +81,28 @@ exit 1
         r#"#!/bin/sh
 set -eu
 case "$*" in
+  *".workflow"*)
+    echo "ci.yml"
+    ;;
+  *".declaration_path"*)
+    echo ".github/actionspec/ci/main.cue"
+    ;;
+  *".actuals | length"*)
+    echo "1"
+    ;;
+  *'.actuals[] | select(.status == $status_name)] | length'*)
+    case "$*" in
+      *"passed"*)
+        echo "1"
+        ;;
+      *"failed"*)
+        echo "0"
+        ;;
+      *)
+        echo "0"
+        ;;
+    esac
+    ;;
   *".pull_request.number // empty"*)
     echo "42"
     ;;
@@ -88,7 +110,8 @@ case "$*" in
     echo "123"
     ;;
   *"{body: .}"*)
-    cat >/dev/null
+    payload="$(cat)"
+    printf '%s\n' "${payload}" > "${JQ_BODY_LOG}"
     echo '{"body":"mock"}'
     ;;
   *)
@@ -130,9 +153,11 @@ esac
     let summary_file = temp.path().join("step_summary.md");
     let event_file = temp.path().join("event.json");
     let curl_log = temp.path().join("curl.log");
+    let jq_body_log = temp.path().join("jq-body.log");
 
     fs::write(&event_file, r#"{"pull_request":{"number":42}}"#).unwrap();
     fs::write(&curl_log, "").unwrap();
+    fs::write(&jq_body_log, "").unwrap();
 
     let status = Command::new("/bin/sh")
         .arg("scripts/action/entrypoint.sh")
@@ -159,6 +184,7 @@ esac
         .env("GITHUB_EVENT_PATH", &event_file)
         .env("GITHUB_REPOSITORY", "v4lproik/github-actionspec-rs")
         .env("CURL_LOG", &curl_log)
+        .env("JQ_BODY_LOG", &jq_body_log)
         .status()
         .unwrap();
 
@@ -176,4 +202,8 @@ esac
     let curl_log = fs::read_to_string(&curl_log).unwrap();
     assert!(curl_log.contains("/issues/42/comments"));
     assert!(curl_log.contains("/issues/comments/123"));
+
+    let comment_body = fs::read_to_string(&jq_body_log).unwrap();
+    assert!(comment_body.contains("Current: `1` payloads, `1` passed, `0` failed"));
+    assert!(comment_body.contains("## Validation Matrix"));
 }
