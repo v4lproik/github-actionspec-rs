@@ -35,6 +35,16 @@ pub enum Command {
         actual: Vec<PathBuf>,
         #[arg(long = "declarations-dir", default_value = ".github/actionspec")]
         declarations_dir: PathBuf,
+        #[arg(long = "report-file")]
+        report_file: Option<PathBuf>,
+    },
+    Dashboard {
+        #[arg(long)]
+        current: PathBuf,
+        #[arg(long)]
+        baseline: Option<PathBuf>,
+        #[arg(long)]
+        output: PathBuf,
     },
 }
 
@@ -144,11 +154,13 @@ mod tests {
                 workflow,
                 actual,
                 declarations_dir,
+                report_file,
             } => {
                 assert_eq!(repo, PathBuf::from("/tmp/repo"));
                 assert_eq!(workflow, Some("ci.yml".to_owned()));
                 assert_eq!(actual, vec![PathBuf::from("actual.json")]);
                 assert_eq!(declarations_dir, PathBuf::from(".github/actionspec"));
+                assert_eq!(report_file, None);
             }
             other => panic!("unexpected command: {other:?}"),
         }
@@ -172,11 +184,41 @@ mod tests {
                 workflow,
                 actual,
                 declarations_dir,
+                report_file,
             } => {
                 assert_eq!(repo, PathBuf::from("/tmp/repo"));
                 assert_eq!(workflow, None);
                 assert_eq!(actual, vec![PathBuf::from("actual.json")]);
                 assert_eq!(declarations_dir, PathBuf::from(".github/actionspec"));
+                assert_eq!(report_file, None);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_dashboard_command() {
+        let cli = Cli::try_parse_from([
+            "github-actionspec",
+            "dashboard",
+            "--current",
+            "current.json",
+            "--baseline",
+            "baseline.json",
+            "--output",
+            "dashboard.md",
+        ])
+        .expect("cli should parse");
+
+        match cli.command {
+            Command::Dashboard {
+                current,
+                baseline,
+                output,
+            } => {
+                assert_eq!(current, PathBuf::from("current.json"));
+                assert_eq!(baseline, Some(PathBuf::from("baseline.json")));
+                assert_eq!(output, PathBuf::from("dashboard.md"));
             }
             other => panic!("unexpected command: {other:?}"),
         }

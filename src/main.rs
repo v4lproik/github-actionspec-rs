@@ -1,8 +1,10 @@
 use clap::Parser;
 use github_actionspec_rs::cli::{Cli, Command};
+use github_actionspec_rs::dashboard::{load_validation_report, write_dashboard_markdown};
 use github_actionspec_rs::discovery::discover_declarations;
 use github_actionspec_rs::validate::{
-    validate_contract, validate_repo_workflow, ValidateContractOptions, ValidateRepoWorkflowOptions,
+    validate_contract, validate_repo_workflow, write_validation_report, ValidateContractOptions,
+    ValidateRepoWorkflowOptions,
 };
 use std::path::PathBuf;
 
@@ -57,15 +59,38 @@ fn run() -> Result<(), github_actionspec_rs::errors::AppError> {
             workflow,
             actual,
             declarations_dir,
+            report_file,
         } => {
-            validate_repo_workflow(ValidateRepoWorkflowOptions {
+            let result = validate_repo_workflow(ValidateRepoWorkflowOptions {
                 repo_root: repo,
                 workflow,
                 actual_paths: normalize_actual_inputs(actual),
                 declarations_dir,
+                report_file: report_file.clone(),
                 cwd: None,
                 env: None,
             })?;
+            if let Some(report_file) = report_file {
+                write_validation_report(&result.report, &report_file)?;
+            }
+            if result.failed_count > 0 {
+                return Err(github_actionspec_rs::errors::AppError::ValidationFailures {
+                    failed: result.failed_count,
+                    total: result.report.actuals.len(),
+                });
+            }
+        }
+        Command::Dashboard {
+            current,
+            baseline,
+            output,
+        } => {
+            let current = load_validation_report(&current)?;
+            let baseline = match baseline {
+                Some(path) => Some(load_validation_report(&path)?),
+                None => None,
+            };
+            write_dashboard_markdown(&current, baseline.as_ref(), &output)?;
         }
     }
 

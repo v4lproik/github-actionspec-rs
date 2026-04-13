@@ -44,3 +44,29 @@ pub struct WorkflowStepRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub outputs: Option<BTreeMap<String, String>>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ValidationStatus {
+    Passed,
+    Failed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ActualValidationReport {
+    pub actual_path: PathBuf,
+    pub workflow: String,
+    #[serde(rename = "ref", skip_serializing_if = "Option::is_none")]
+    pub ref_name: Option<String>,
+    pub status: ValidationStatus,
+    pub jobs: BTreeMap<String, String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ValidationReport {
+    pub workflow: String,
+    pub declaration_path: PathBuf,
+    pub actuals: Vec<ActualValidationReport>,
+}

@@ -111,6 +111,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
+      pull-requests: write
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -166,6 +167,148 @@ jobs:
             echo "::error::The skipped build fixture should fail validation."
             exit 1
           fi
+      - name: Prepare matrix dashboard workspace
+        run: mkdir -p .github-actionspec-dashboard/current .github-actionspec-dashboard/baseline
+      - name: Generate current validation report
+        id: current-matrix
+        continue-on-error: true
+        run: just validate-repo-report . ci.yml tests/fixtures/ci .github-actionspec-dashboard/current/validation-report.json
+      - name: Find baseline matrix artifact
+        id: baseline-matrix
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const workflowId = "ci.yml";
+            const artifactName = "ci-matrix-dashboard";
+
+            async function findArtifactUrl(branch, eventName) {
+              const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
+                owner,
+                repo,
+                workflow_id: workflowId,
+                branch,
+                event: eventName,
+                per_page: 50,
+              });
+
+              for (const run of runs) {
+                if (run.id === context.runId || run.status !== "completed") {
+                  continue;
+                }
+
+                const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
+                  owner,
+                  repo,
+                  run_id: run.id,
+                  per_page: 100,
+                });
+
+                const artifact = artifacts.data.artifacts.find(
+                  (entry) => entry.name === artifactName && !entry.expired,
+                );
+
+                if (artifact) {
+                  core.setOutput("baseline_run_id", String(run.id));
+                  core.setOutput("baseline_source", `${eventName}:${branch}`);
+                  return artifact.archive_download_url;
+                }
+              }
+
+              return "";
+            }
+
+            let url = "";
+            if (context.eventName === "pull_request" && context.payload.pull_request?.head?.ref) {
+              url = await findArtifactUrl(context.payload.pull_request.head.ref, "pull_request");
+            }
+
+            if (!url) {
+              url = await findArtifactUrl("main", "push");
+            }
+
+            core.setOutput("download_url", url);
+      - name: Download baseline matrix artifact
+        if: ${{ steps.baseline-matrix.outputs.download_url != '' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          BASELINE_URL: ${{ steps.baseline-matrix.outputs.download_url }}
+        run: |
+          curl -fsSL \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -L "${BASELINE_URL}" \
+            -o .github-actionspec-dashboard/baseline/baseline.zip
+          unzip -q .github-actionspec-dashboard/baseline/baseline.zip -d .github-actionspec-dashboard/baseline
+      - name: Generate matrix dashboard
+        run: |
+          if [[ -f .github-actionspec-dashboard/baseline/validation-report.json ]]; then
+            just dashboard-report \
+              .github-actionspec-dashboard/current/validation-report.json \
+              .github-actionspec-dashboard/dashboard.md \
+              .github-actionspec-dashboard/baseline/validation-report.json
+          else
+            just dashboard-report \
+              .github-actionspec-dashboard/current/validation-report.json \
+              .github-actionspec-dashboard/dashboard.md
+          fi
+      - name: Add matrix dashboard to summary
+        run: cat .github-actionspec-dashboard/dashboard.md >> "${GITHUB_STEP_SUMMARY}"
+      - name: Upload matrix dashboard artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-matrix-dashboard
+          path: |
+            .github-actionspec-dashboard/current/validation-report.json
+            .github-actionspec-dashboard/dashboard.md
+      - name: Comment matrix on PR
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+        uses: actions/github-script@v8
+        env:
+          MATRIX_BASELINE_SOURCE: ${{ steps.baseline-matrix.outputs.baseline_source }}
+        with:
+          script: |
+            const fs = require("fs");
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const issue_number = context.issue.number;
+            const marker = "<!-- github-actionspec-matrix -->";
+            const dashboard = fs.readFileSync(".github-actionspec-dashboard/dashboard.md", "utf8");
+            const baselineSource = process.env.MATRIX_BASELINE_SOURCE;
+            const body = [
+              marker,
+              "## Workflow Matrix Dashboard",
+              baselineSource ? `Baseline: \`${baselineSource}\`` : "Baseline: `none`",
+              "",
+              dashboard,
+            ].join("\n");
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+
+            const existing = comments.find((comment) => comment.body?.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body,
+              });
+            }
       - name: Generate coverage
         run: just coverage-ci
       - name: Upload coverage to Codecov

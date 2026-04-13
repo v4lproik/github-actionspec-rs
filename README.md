@@ -42,13 +42,16 @@ just discover
 just coverage-summary
 just pr-create
 just validate-repo /path/to/repo ci.yml /path/to/actual.json
+just validate-repo-report /path/to/repo ci.yml /path/to/payloads target/actionspec/report.json
+just dashboard-report target/actionspec/report.json target/actionspec/dashboard.md
 ```
 
 Commands:
 
 - `github-actionspec discover --repo <path>`
 - `github-actionspec validate --schema <file> --schema <file> --contract <file> --actual <file-or-glob>`
-- `github-actionspec validate-repo --repo <path> [--workflow <name>] --actual <file-dir-or-glob>`
+- `github-actionspec validate-repo --repo <path> [--workflow <name>] --actual <file-dir-or-glob> [--report-file <report.json>]`
+- `github-actionspec dashboard --current <report.json> [--baseline <report.json>] --output <dashboard.md>`
 
 ## GitHub Action
 
@@ -153,9 +156,12 @@ GitHub Actions must call `just`, not raw `cargo`, `gh`, or `mise` command sequen
 - Build: `just build`
 - Lint: `just lint`
 - Test: `just test`
+- Matrix report: `just validate-repo-report . ci.yml tests/fixtures/ci target/actionspec/validation-report.json`
+- Matrix dashboard: `just dashboard-report target/actionspec/validation-report.json target/actionspec/dashboard.md`
 - Coverage upload: `just coverage-ci`
 - Local full pass: `just ci`
 - The remote action integration check now lives inside the main `CI` workflow and validates the published `v4lproik/github-actionspec-rs@main` action reference end to end against this repository's own `ci.yml` fixtures on pushes to `main`.
+- The `tests` job publishes a `ci-matrix-dashboard` artifact with the current validation report and a markdown matrix. On pull requests, the workflow also updates a single PR comment with that matrix and diffs it against the latest available baseline artifact.
 
 ## Docker Parity
 
