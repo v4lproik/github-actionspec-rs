@@ -2,6 +2,10 @@ package actionspec
 
 workflow: "ci.yml"
 
+let detectChanges = run.jobs["detect-changes"]
+let runCI = detectChanges.outputs.run_ci
+let runPages = detectChanges.outputs.run_pages
+
 run: #Declaration.run & {
   workflow: workflow
   ref:      "main"
@@ -9,27 +13,66 @@ run: #Declaration.run & {
   jobs: {
     "detect-changes": {
       result: "success"
+      outputs: {
+        run_ci:    "true" | "false"
+        run_pages: "true" | "false"
+      }
     }
 
-    lint: {
-      result: "success"
+    if runCI == "true" {
+      lint: {
+        result: "success"
+      }
+
+      build: {
+        result: "success"
+      }
+
+      tests: {
+        result: "success"
+      }
+
+      docker: {
+        result: "success"
+      }
     }
 
-    build: {
-      result: "success"
+    if runCI == "false" {
+      lint: {
+        result: "skipped"
+      }
+
+      build: {
+        result: "skipped"
+      }
+
+      tests: {
+        result: "skipped"
+      }
+
+      docker: {
+        result: "skipped"
+      }
     }
 
-    tests: {
-      result: "success"
+    if runPages == "true" {
+      pages: {
+        result: "success"
+      }
     }
 
-    docker: {
-      result: "success"
+    if runPages == "false" {
+      pages: {
+        result: "skipped"
+      }
     }
 
-    // Pages only runs for docs changes on pushes to main.
-    pages: {
-      result: "success" | "skipped"
+    if runPages == "true" {
+      "detect-changes": {
+        outputs: {
+          run_ci: "true"
+        }
+      }
     }
   }
 }

@@ -4,7 +4,11 @@
     "ref": "main",
     "jobs": {
       "detect-changes": {
-        "result": "success"
+        "result": "success",
+        "outputs": {
+          "run_ci": "true",
+          "run_pages": "false"
+        }
       },
       "lint": {
         "result": "success"
