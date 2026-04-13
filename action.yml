@@ -41,7 +41,7 @@ inputs:
   comment-pr:
     description: Whether to upsert the rendered dashboard as a PR comment when the workflow runs on a pull request.
     required: false
-    default: "false"
+    default: "true"
   comment-title:
     description: Title used for the PR comment when comment-pr is enabled.
     required: false
