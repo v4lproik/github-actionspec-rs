@@ -40,14 +40,13 @@ fn discovers_repo_contracts_through_cli() {
     );
 
     let mut command = Command::cargo_bin("github-actionspec").unwrap();
-    command
-        .arg("discover")
-        .arg("--repo")
-        .arg(repo.path());
+    command.arg("discover").arg("--repo").arg(repo.path());
 
     command
         .assert()
         .success()
         .stdout(predicate::str::contains("test-e2e.yml"))
-        .stdout(predicate::str::contains(".github/actionspec/test-e2e/default.cue"));
+        .stdout(predicate::str::contains(
+            ".github/actionspec/test-e2e/default.cue",
+        ));
 }

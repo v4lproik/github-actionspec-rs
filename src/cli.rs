@@ -37,3 +37,87 @@ pub enum Command {
         declarations_dir: PathBuf,
     },
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_validate_command_with_multiple_schemas() {
+        let cli = Cli::try_parse_from([
+            "github-actionspec",
+            "validate",
+            "--schema",
+            "schema/workflow_run.cue",
+            "--schema",
+            "schema/declaration.cue",
+            "--contract",
+            "contract.cue",
+            "--actual",
+            "actual.json",
+        ])
+        .expect("cli should parse");
+
+        match cli.command {
+            Command::Validate {
+                schema,
+                contract,
+                actual,
+            } => {
+                assert_eq!(schema.len(), 2);
+                assert_eq!(schema[0], PathBuf::from("schema/workflow_run.cue"));
+                assert_eq!(schema[1], PathBuf::from("schema/declaration.cue"));
+                assert_eq!(contract, PathBuf::from("contract.cue"));
+                assert_eq!(actual, PathBuf::from("actual.json"));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn discover_defaults_to_github_actionspec_directory() {
+        let cli = Cli::try_parse_from(["github-actionspec", "discover", "--repo", "/tmp/repo"])
+            .expect("cli should parse");
+
+        match cli.command {
+            Command::Discover {
+                repo,
+                declarations_dir,
+            } => {
+                assert_eq!(repo, PathBuf::from("/tmp/repo"));
+                assert_eq!(declarations_dir, PathBuf::from(".github/actionspec"));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn validate_repo_defaults_to_github_actionspec_directory() {
+        let cli = Cli::try_parse_from([
+            "github-actionspec",
+            "validate-repo",
+            "--repo",
+            "/tmp/repo",
+            "--workflow",
+            "build-infrastructure.yml",
+            "--actual",
+            "actual.json",
+        ])
+        .expect("cli should parse");
+
+        match cli.command {
+            Command::ValidateRepo {
+                repo,
+                workflow,
+                actual,
+                declarations_dir,
+            } => {
+                assert_eq!(repo, PathBuf::from("/tmp/repo"));
+                assert_eq!(workflow, "build-infrastructure.yml");
+                assert_eq!(actual, PathBuf::from("actual.json"));
+                assert_eq!(declarations_dir, PathBuf::from(".github/actionspec"));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+}

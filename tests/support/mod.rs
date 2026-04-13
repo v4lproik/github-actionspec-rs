@@ -27,10 +27,36 @@ pub fn write_actual(path: &Path, workflow: &str) {
     .unwrap();
 }
 
+pub fn write_validation_fixture(
+    temp_root: &Path,
+    workflow: &str,
+) -> (std::path::PathBuf, std::path::PathBuf, std::path::PathBuf) {
+    let schema = temp_root.join("schema.cue");
+    let contract = temp_root.join("contract.cue");
+    let actual = temp_root.join("actual.json");
+
+    std::fs::write(
+        &schema,
+        "package actionspec\n#WorkflowRun: {workflow: string, jobs: [string]: {result: string}}\n",
+    )
+    .unwrap();
+    std::fs::write(
+        &contract,
+        format!(
+            "package actionspec\nrun: #WorkflowRun & {{workflow: \"{workflow}\", jobs: {{build: {{result: \"success\"}}}}}}\n"
+        ),
+    )
+    .unwrap();
+    write_actual(&actual, workflow);
+
+    (schema, contract, actual)
+}
+
 pub fn install_fake_cue(temp_dir: &TempDir, mode: &str) -> HashMap<String, String> {
     let bin_dir = temp_dir.path().join("bin");
     fs::create_dir_all(&bin_dir).unwrap();
     let cue_path = bin_dir.join("cue");
+    // Keep the shim minimal: tests only need `cue version` and `cue vet` to behave predictably.
     fs::write(
         &cue_path,
         format!(
@@ -49,7 +75,11 @@ pub fn install_fake_cue(temp_dir: &TempDir, mode: &str) -> HashMap<String, Strin
     let mut env: HashMap<String, String> = std::env::vars().collect();
     env.insert(
         "PATH".to_owned(),
-        format!("{}:{}", bin_dir.display(), env.get("PATH").cloned().unwrap_or_default()),
+        format!(
+            "{}:{}",
+            bin_dir.display(),
+            env.get("PATH").cloned().unwrap_or_default()
+        ),
     );
     env
 }

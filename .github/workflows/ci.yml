@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Build
+            recipe: build
+          - name: Lint
+            recipe: lint
+          - name: Test
+            recipe: test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install just
+        uses: taiki-e/install-action@v2
+        with:
+          tool: just
+      - name: Install mise tools
+        uses: jdx/mise-action@v3
+      - name: Run ${{ matrix.recipe }}
+        run: just ${{ matrix.recipe }}
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    needs:
+      - checks
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install just and cargo-llvm-cov
+        uses: taiki-e/install-action@v2
+        with:
+          tool: just,cargo-llvm-cov
+      - name: Install mise tools
+        uses: jdx/mise-action@v3
+      - name: Generate coverage
+        run: just coverage-ci
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          use_oidc: true
+          fail_ci_if_error: true
+          files: ./target/llvm-cov/lcov.info

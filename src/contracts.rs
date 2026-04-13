@@ -17,3 +17,30 @@ pub fn declaration_schema_path() -> PathBuf {
 pub fn resolve_declarations_dir(repo_root: &Path, declarations_dir: &Path) -> PathBuf {
     repo_root.join(declarations_dir)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn package_root_points_to_the_repo_root() {
+        assert!(package_root().join("Cargo.toml").is_file());
+    }
+
+    #[test]
+    fn bundled_schema_paths_point_to_existing_files() {
+        assert!(workflow_schema_path().is_file());
+        assert!(declaration_schema_path().is_file());
+    }
+
+    #[test]
+    fn resolve_declarations_dir_joins_repo_and_relative_dir() {
+        let repo_root = Path::new("/tmp/demo-repo");
+        let declarations_dir = Path::new(".github/actionspec");
+
+        assert_eq!(
+            resolve_declarations_dir(repo_root, declarations_dir),
+            PathBuf::from("/tmp/demo-repo/.github/actionspec"),
+        );
+    }
+}

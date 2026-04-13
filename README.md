@@ -10,8 +10,12 @@ This repo uses `mise` for local tool management and `just` for repository comman
 
 ```bash
 mise install
+just lint
 just test
+just ci
 just discover
+just coverage
+just coverage-summary
 ```
 
 The repo-local configuration lives in [.mise.toml](/Users/v4lproik/Programmation/v4lproik/github-actionspec-rs/.mise.toml) and currently pins the Rust toolchain to `1.84.1`.
@@ -20,8 +24,13 @@ This repo also exposes the common commands through [justfile](/Users/v4lproik/Pr
 
 ```bash
 just install
+just fmt
+just lint
+just ci
 just test
 just discover
+just coverage-summary
+just pr-create
 just validate-repo /path/to/repo build-infrastructure.yml /path/to/actual.json
 ```
 
@@ -30,3 +39,45 @@ Commands:
 - `github-actionspec discover --repo <path>`
 - `github-actionspec validate --schema <file> --schema <file> --contract <file> --actual <file>`
 - `github-actionspec validate-repo --repo <path> --workflow <name> --actual <file>`
+
+## Coverage
+
+The target for this repo is to stay close to `90%` test coverage.
+
+Use:
+
+```bash
+just coverage
+just coverage-summary
+```
+
+This runs `cargo llvm-cov` through `mise exec`. Use `just coverage` for the HTML report and `just coverage-summary` for the terminal summary. The `cargo-llvm-cov` subcommand must be available in the local Rust environment for real coverage runs.
+
+For CI and Codecov uploads, use:
+
+```bash
+just coverage-ci
+```
+
+This emits `target/llvm-cov/lcov.info`, which the repository workflow uploads to Codecov.
+
+## CI
+
+GitHub Actions must call `just`, not raw `cargo`, `gh`, or `mise` command sequences.
+
+- Build: `just build`
+- Lint: `just lint`
+- Test: `just test`
+- Coverage upload: `just coverage-ci`
+- Local full pass: `just ci`
+
+## Pull Requests
+
+Open repository PRs through `just` so the command surface stays centralized:
+
+```bash
+just pr-create
+just pr-create-draft
+```
+
+Both recipes default the base branch to `main`.

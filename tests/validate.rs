@@ -1,19 +1,13 @@
 mod support;
 
+use assert_cmd::Command;
 use github_actionspec_rs::validate::{validate_contract, ValidateContractOptions};
 use tempfile::tempdir;
 
 #[test]
 fn validates_when_cue_vet_succeeds() {
     let temp = tempdir().unwrap();
-    let schema = temp.path().join("schema.cue");
-    let contract = temp.path().join("contract.cue");
-    let actual = temp.path().join("actual.json");
-
-    std::fs::write(&schema, "package actionspec\n#WorkflowRun: {workflow: string, jobs: [string]: {result: string}}\n").unwrap();
-    std::fs::write(&contract, "package actionspec\nrun: #WorkflowRun & {workflow: \"demo\", jobs: {build: {result: \"success\"}}}\n").unwrap();
-    std::fs::write(&actual, "{\"run\":{\"workflow\":\"demo\",\"jobs\":{\"build\":{\"result\":\"success\"}}}}")
-        .unwrap();
+    let (schema, contract, actual) = support::write_validation_fixture(temp.path(), "demo");
 
     let env = support::install_fake_cue(&temp, "success");
     let result = validate_contract(ValidateContractOptions {
@@ -28,16 +22,29 @@ fn validates_when_cue_vet_succeeds() {
 }
 
 #[test]
+fn validates_through_cli() {
+    let temp = tempdir().unwrap();
+    let (schema, contract, actual) = support::write_validation_fixture(temp.path(), "demo");
+    let env = support::install_fake_cue(&temp, "success");
+
+    let mut command = Command::cargo_bin("github-actionspec").unwrap();
+    command
+        .envs(env)
+        .arg("validate")
+        .arg("--schema")
+        .arg(&schema)
+        .arg("--contract")
+        .arg(&contract)
+        .arg("--actual")
+        .arg(&actual);
+
+    command.assert().success();
+}
+
+#[test]
 fn fails_when_cue_vet_fails() {
     let temp = tempdir().unwrap();
-    let schema = temp.path().join("schema.cue");
-    let contract = temp.path().join("contract.cue");
-    let actual = temp.path().join("actual.json");
-
-    std::fs::write(&schema, "package actionspec\n#WorkflowRun: {workflow: string, jobs: [string]: {result: string}}\n").unwrap();
-    std::fs::write(&contract, "package actionspec\nrun: #WorkflowRun & {workflow: \"demo\", jobs: {build: {result: \"success\"}}}\n").unwrap();
-    std::fs::write(&actual, "{\"run\":{\"workflow\":\"demo\",\"jobs\":{\"build\":{\"result\":\"success\"}}}}")
-        .unwrap();
+    let (schema, contract, actual) = support::write_validation_fixture(temp.path(), "demo");
 
     let env = support::install_fake_cue(&temp, "failure");
     let error = validate_contract(ValidateContractOptions {
@@ -49,5 +56,7 @@ fn fails_when_cue_vet_fails() {
     })
     .unwrap_err();
 
-    assert!(error.to_string().contains("cue vet failed with exit code 9"));
+    assert!(error
+        .to_string()
+        .contains("cue vet failed with exit code 9"));
 }

@@ -17,7 +17,8 @@ fn discovers_workflow_declarations() {
         "test-e2e.yml",
     );
 
-    let declarations = discover_declarations(repo.path(), std::path::Path::new(".github/actionspec")).unwrap();
+    let declarations =
+        discover_declarations(repo.path(), std::path::Path::new(".github/actionspec")).unwrap();
     assert_eq!(declarations.len(), 2);
     assert_eq!(declarations[0].workflow, "build-infrastructure.yml");
     assert_eq!(

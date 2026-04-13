@@ -10,23 +10,31 @@
 - Use `just` for repository commands.
 - Main commands:
   - `just install`
+  - `just fmt`
   - `just build`
-  - `just check`
+  - `just lint`
   - `just test`
+  - `just ci`
+  - `just coverage`
+  - `just coverage-summary`
+  - `just coverage-ci`
   - `just discover`
+  - `just pr-create`
   - `just validate-repo /path/to/repo build-infrastructure.yml /path/to/actual.json`
 
 ## Rules
 - Keep `.mise.toml` minimal and limited to tool/version management.
 - Keep `justfile` as the canonical command interface.
-- Expose new command flows through `just` and document them in `README.md`.
+- Do not add raw `cargo`, `gh`, or `mise exec` command flows to docs, scripts, or workflows when a `just` recipe can own them.
+- Expose new command flows through `just` first, then document them in `README.md`.
 - Preserve compatibility with repository-owned `.cue` declarations already used in `factmachine-monorepo`.
 - `cue` is still an external runtime dependency and must be on `PATH` for real validation runs.
+- Repository automation should invoke `just`, including CI jobs and PR creation flows.
 
 ## Git Conventions
 - Branches/PR heads should be formatted as `<github_nickname>/<github_issue>-<title_name>`.
 - PR titles should include the GitHub issue ticker number.
-- Commit messages should follow `<type>(<scope>): <message>`, for example `chore(domain): message`.
+- Commit messages should follow `<type>(<scope>): <message>`, for example `feat(cli): add coverage export command`.
 
 ## Validation
 - For code changes, run `just test`.

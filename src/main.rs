@@ -1,7 +1,9 @@
 use clap::Parser;
 use github_actionspec_rs::cli::{Cli, Command};
 use github_actionspec_rs::discovery::discover_declarations;
-use github_actionspec_rs::validate::{validate_contract, validate_repo_workflow, ValidateContractOptions, ValidateRepoWorkflowOptions};
+use github_actionspec_rs::validate::{
+    validate_contract, validate_repo_workflow, ValidateContractOptions, ValidateRepoWorkflowOptions,
+};
 
 fn main() {
     if let Err(error) = run() {
