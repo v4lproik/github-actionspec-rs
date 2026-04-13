@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>github-actionspec-rs</title>
+    <meta
+      name="description"
+      content="Validate GitHub Actions workflow contracts expressed in CUE with a fast Rust CLI and a runtime image that bundles the cue binary."
+    />
+    <meta property="og:title" content="github-actionspec-rs" />
+    <meta
+      property="og:description"
+      content="Treat GitHub Actions workflows like contracts. Discover declarations, validate payloads, and ship safer automation."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://v4lproik.github.io/github-actionspec-rs/" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="site-header">
+        <a class="brand" href="#top" aria-label="github-actionspec-rs home">
+          <span class="brand-mark">ga</span>
+          <span class="brand-text">github-actionspec-rs</span>
+        </a>
+        <nav class="site-nav" aria-label="Primary">
+          <a href="#why">Why</a>
+          <a href="#flow">Flow</a>
+          <a href="#example">Example</a>
+          <a href="https://github.com/v4lproik/github-actionspec-rs">GitHub</a>
+        </nav>
+      </header>
+
+      <main id="top">
+        <section class="hero">
+          <div class="hero-copy">
+            <p class="eyebrow">Workflow contracts, not workflow guesswork</p>
+            <h1>Make GitHub Actions behave like an interface you can validate.</h1>
+            <p class="hero-text">
+              <code>github-actionspec-rs</code> keeps CUE as the contract language, adds a fast
+              Rust CLI around discovery and validation, and gives teams a runtime image that ships
+              with <code>cue</code> already bundled.
+            </p>
+            <div class="hero-actions">
+              <a
+                class="button button-primary"
+                href="https://hub.docker.com/r/v4lproik/github-actionspec-rs"
+              >
+                Run The Runtime Image
+              </a>
+              <a
+                class="button button-secondary"
+                href="https://github.com/v4lproik/github-actionspec-rs#readme"
+              >
+                Read The README
+              </a>
+            </div>
+            <ul class="hero-pills" aria-label="Highlights">
+              <li>Rust CLI</li>
+              <li>CUE contracts</li>
+              <li>Repo-aware discovery</li>
+              <li>Docker-first runtime</li>
+            </ul>
+          </div>
+
+          <aside class="hero-terminal" aria-label="Command example">
+            <div class="terminal-topbar">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+            <pre><code>$ docker run --rm -v "$PWD:/workspace" \
+  docker.io/v4lproik/github-actionspec-rs:latest \
+  validate-repo \
+  --repo /workspace \
+  --workflow build-infrastructure.yml \
+  --actual /workspace/actual.json
+
+validated build-infrastructure.yml against
+.github/actionspec/build-infrastructure/staging.cue</code></pre>
+          </aside>
+        </section>
+
+        <section class="proof-strip" aria-label="Key benefits">
+          <article>
+            <p class="proof-kicker">Catch drift early</p>
+            <p>
+              Validate actual workflow payloads before contract changes silently break downstream
+              expectations.
+            </p>
+          </article>
+          <article>
+            <p class="proof-kicker">Keep contracts in-repo</p>
+            <p>
+              Declarations live under <code>.github/actionspec</code>, close to the automation they
+              describe.
+            </p>
+          </article>
+          <article>
+            <p class="proof-kicker">Lower setup friction</p>
+            <p>
+              Use the published runtime image when you do not want to manage a separate
+              <code>cue</code> installation locally.
+            </p>
+          </article>
+        </section>
+
+        <section id="why" class="content-section">
+          <div class="section-heading">
+            <p class="eyebrow">Why teams reach for it</p>
+            <h2>GitHub Actions is infrastructure. Treat its inputs and outputs like API surface.</h2>
+          </div>
+          <div class="feature-grid">
+            <article class="card">
+              <h3>Discover contracts automatically</h3>
+              <p>
+                Scan a repository, map workflows to declarations, and surface stable relative paths
+                for each contract file.
+              </p>
+              <pre><code>github-actionspec discover --repo /path/to/repo</code></pre>
+            </article>
+            <article class="card">
+              <h3>Validate one contract directly</h3>
+              <p>
+                Point the CLI at schema files, a contract declaration, and an actual payload when
+                you need a focused validation pass.
+              </p>
+              <pre><code>github-actionspec validate \
+  --schema schema/workflow_run.cue \
+  --schema schema/declaration.cue \
+  --contract contract.cue \
+  --actual actual.json</code></pre>
+            </article>
+            <article class="card">
+              <h3>Validate a workflow from the repo root</h3>
+              <p>
+                Skip manual lookup. Resolve the matching declaration for a workflow name and vet it
+                against the incoming JSON payload.
+              </p>
+              <pre><code>github-actionspec validate-repo \
+  --repo /path/to/repo \
+  --workflow build-infrastructure.yml \
+  --actual actual.json</code></pre>
+            </article>
+          </div>
+        </section>
+
+        <section id="flow" class="content-section flow-section">
+          <div class="section-heading">
+            <p class="eyebrow">Simple flow</p>
+            <h2>Three steps from declaration to enforcement.</h2>
+          </div>
+          <div class="steps">
+            <article class="step">
+              <span class="step-number">01</span>
+              <h3>Declare the contract</h3>
+              <p>
+                Store CUE files in <code>.github/actionspec/**</code> and pin each declaration to a
+                workflow filename.
+              </p>
+            </article>
+            <article class="step">
+              <span class="step-number">02</span>
+              <h3>Collect the actual payload</h3>
+              <p>
+                Feed the validator the JSON your workflow produced or the event payload your system
+                consumed.
+              </p>
+            </article>
+            <article class="step">
+              <span class="step-number">03</span>
+              <h3>Run it where your team works</h3>
+              <p>
+                Use the Rust CLI locally, or run the runtime image in CI when you want a consistent
+                environment with <code>cue</code> included.
+              </p>
+            </article>
+          </div>
+        </section>
+
+        <section id="example" class="content-section example-section">
+          <div class="section-heading">
+            <p class="eyebrow">Real shape, minimal ceremony</p>
+            <h2>A declaration stays readable while still describing a contract precisely.</h2>
+          </div>
+          <div class="example-grid">
+            <article class="code-card">
+              <p class="code-title">Declaration</p>
+              <pre><code>package actionspec
+
+workflow: "build-infrastructure.yml"
+
+run: #Declaration.run & {
+  workflow: workflow
+  jobs: {
+    sample: {
+      result: "success"
+    }
+  }
+}</code></pre>
+            </article>
+            <article class="code-card">
+              <p class="code-title">Fastest way to try it</p>
+              <pre><code>docker run --rm \
+  -v "$PWD:/workspace" \
+  docker.io/v4lproik/github-actionspec-rs:latest \
+  discover --repo /workspace</code></pre>
+              <p class="supporting-copy">
+                The runtime image bundles <code>github-actionspec</code> and <code>cue</code>, so
+                first-run adoption is lighter than a host install.
+              </p>
+            </article>
+          </div>
+        </section>
+
+        <section class="cta-panel">
+          <p class="eyebrow">Start with the shortest path</p>
+          <h2>Pull the runtime image, point it at your repo, and see what contracts already exist.</h2>
+          <p>
+            If you want full repository workflows, the source tree keeps the same command surface
+            through <code>just</code> for build, lint, test, and release automation.
+          </p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="https://github.com/v4lproik/github-actionspec-rs">
+              Browse Source
+            </a>
+            <a class="button button-secondary" href="https://hub.docker.com/r/v4lproik/github-actionspec-rs">
+              Open Docker Hub
+            </a>
+          </div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
