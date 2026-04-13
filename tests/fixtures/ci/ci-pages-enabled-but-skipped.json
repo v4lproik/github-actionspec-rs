@@ -1,13 +1,13 @@
 {
   "run": {
     "workflow": "ci.yml",
-    "ref": "feature/self-hosted-fixtures",
+    "ref": "main",
     "jobs": {
       "detect-changes": {
         "result": "success",
         "outputs": {
           "run_ci": "true",
-          "run_pages": "false"
+          "run_pages": "true"
         }
       },
       "lint": {
