@@ -220,7 +220,7 @@ jobs:
         run: just validate-repo-report . ci.yml tests/fixtures/ci "${{ runner.temp }}/github-actionspec-dashboard/current/validation-report.json"
       - name: Find baseline matrix artifact
         id: baseline-matrix
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const owner = context.repo.owner;
@@ -477,7 +477,7 @@ jobs:
         uses: actions/checkout@v6
       - name: Check Pages enablement
         id: pages-check
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             try {
