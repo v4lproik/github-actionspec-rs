@@ -25,7 +25,7 @@ docker-run-runtime:
   just docker-build-runtime
   just docker-smoke-runtime
 
-docker-push-runtime image="docker.io/v4lproik/github-actionspec-rs:latest":
+docker-push-runtime image="docker.io/valproik/github-actionspec-rs:latest":
   RUNTIME_IMAGE_TAG={{image}} docker buildx bake --push runtime
 
 runtime-ci:

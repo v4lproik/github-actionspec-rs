@@ -282,7 +282,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Publish runtime image
         if: ${{ steps.publish-check.outputs.enabled == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-        run: just docker-push-runtime docker.io/v4lproik/github-actionspec-rs:latest
+        run: just docker-push-runtime docker.io/valproik/github-actionspec-rs:latest
       - name: Skip publish when credentials are missing
         if: ${{ steps.publish-check.outputs.enabled != 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         run: echo "Docker Hub credentials are not configured; skipping runtime image publish."
