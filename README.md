@@ -91,9 +91,9 @@ Inputs:
 - `workflow`: workflow file name to validate. Optional when the provided payloads all belong to the same workflow
 - `actual`: path to one normalized workflow run JSON payload, a directory containing JSON payloads, a glob pattern, or a newline-separated list of payloads and glob patterns. Defaults to `.github/actionspec-artifacts`
 - `declarations-dir`: custom declarations directory. Defaults to `.github/actionspec`
-- `report-file`: path where the action writes the JSON validation report. Defaults to `.github-actionspec-dashboard/current/validation-report.json`
+- `report-file`: path where the action writes the JSON validation report. Defaults to `/github/runner_temp/github-actionspec-dashboard/current/validation-report.json`
 - `baseline-report`: optional path to a previous JSON validation report used to compute matrix diffs
-- `dashboard-file`: path where the action writes the markdown matrix dashboard. Defaults to `.github-actionspec-dashboard/current/dashboard.md`
+- `dashboard-file`: path where the action writes the markdown matrix dashboard. Defaults to `/github/runner_temp/github-actionspec-dashboard/current/dashboard.md`
 - `write-summary`: whether to append the matrix dashboard to the job summary. Defaults to `true`
 - `comment-pr`: whether to upsert the matrix dashboard as a PR comment. Defaults to `false`
 - `comment-title`: title used for the PR comment. Defaults to `Workflow Matrix Dashboard`
@@ -139,9 +139,9 @@ Examples:
     repo: .
     workflow: ci.yml
     actual: .github/actionspec-artifacts/**/*.json
-    report-file: .github-actionspec-dashboard/current/validation-report.json
-    baseline-report: .github-actionspec-dashboard/baseline/validation-report.json
-    dashboard-file: .github-actionspec-dashboard/current/dashboard.md
+    report-file: ${{ runner.temp }}/github-actionspec-dashboard/current/validation-report.json
+    baseline-report: ${{ runner.temp }}/github-actionspec-dashboard/baseline/validation-report.json
+    dashboard-file: ${{ runner.temp }}/github-actionspec-dashboard/current/dashboard.md
     comment-pr: true
     github-token: ${{ github.token }}
 
@@ -165,7 +165,7 @@ Example:
     workflow: ci.yml
     branch: main
     name: ci-matrix-dashboard
-    path: .github-actionspec-dashboard/baseline
+    path: ${{ runner.temp }}/github-actionspec-dashboard/baseline
     if_no_artifact_found: warn
 ```
 

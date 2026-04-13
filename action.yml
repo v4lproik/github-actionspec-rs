@@ -25,7 +25,7 @@ inputs:
   report-file:
     description: Path where the action should write the JSON validation report.
     required: false
-    default: .github-actionspec-dashboard/current/validation-report.json
+    default: /github/runner_temp/github-actionspec-dashboard/current/validation-report.json
   baseline-report:
     description: Optional path to a previous JSON validation report used to render dashboard diffs.
     required: false
@@ -33,7 +33,7 @@ inputs:
   dashboard-file:
     description: Path where the action should write the markdown matrix dashboard.
     required: false
-    default: .github-actionspec-dashboard/current/dashboard.md
+    default: /github/runner_temp/github-actionspec-dashboard/current/dashboard.md
   write-summary:
     description: Whether to append the rendered dashboard to the GitHub Actions job summary.
     required: false

@@ -129,6 +129,9 @@ jobs:
           repo: .
           workflow: ci.yml
           actual: tests/fixtures/ci/passing
+          report-file: /github/runner_temp/github-actionspec-smoke/passing-dir-report.json
+          dashboard-file: /github/runner_temp/github-actionspec-smoke/passing-dir-dashboard.md
+          write-summary: false
       - name: Validate passing fixture list
         uses: ./
         with:
@@ -137,6 +140,9 @@ jobs:
           actual: |
             tests/fixtures/ci/ci-main-success.json
             tests/fixtures/ci/ci-main-pages.json
+          report-file: /github/runner_temp/github-actionspec-smoke/passing-list-report.json
+          dashboard-file: /github/runner_temp/github-actionspec-smoke/passing-list-dashboard.md
+          write-summary: false
       - name: Reject non-main workflow run
         id: wrong-ref
         continue-on-error: true
@@ -145,6 +151,9 @@ jobs:
           repo: .
           workflow: ci.yml
           actual: tests/fixtures/ci/ci-non-main-ref.json
+          report-file: /github/runner_temp/github-actionspec-smoke/wrong-ref-report.json
+          dashboard-file: /github/runner_temp/github-actionspec-smoke/wrong-ref-dashboard.md
+          write-summary: false
       - name: Reject skipped build on main
         id: skipped-build
         continue-on-error: true
@@ -153,6 +162,9 @@ jobs:
           repo: .
           workflow: ci.yml
           actual: tests/fixtures/ci/ci-build-skipped.json
+          report-file: /github/runner_temp/github-actionspec-smoke/skipped-build-report.json
+          dashboard-file: /github/runner_temp/github-actionspec-smoke/skipped-build-dashboard.md
+          write-summary: false
       - name: Validate expected smoke outcomes
         if: ${{ always() }}
         run: |
@@ -168,11 +180,11 @@ jobs:
             exit 1
           fi
       - name: Prepare matrix dashboard workspace
-        run: mkdir -p .github-actionspec-dashboard/current .github-actionspec-dashboard/baseline
+        run: mkdir -p "${{ runner.temp }}/github-actionspec-dashboard/current" "${{ runner.temp }}/github-actionspec-dashboard/baseline"
       - name: Generate current validation report
         id: current-matrix
         continue-on-error: true
-        run: just validate-repo-report . ci.yml tests/fixtures/ci .github-actionspec-dashboard/current/validation-report.json
+        run: just validate-repo-report . ci.yml tests/fixtures/ci "${{ runner.temp }}/github-actionspec-dashboard/current/validation-report.json"
       - name: Find baseline matrix artifact
         id: baseline-matrix
         uses: actions/github-script@v8
@@ -239,8 +251,8 @@ jobs:
             -H "Authorization: Bearer ${GITHUB_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
             -L "${BASELINE_URL}" \
-            -o .github-actionspec-dashboard/baseline/baseline.zip
-          unzip -q .github-actionspec-dashboard/baseline/baseline.zip -d .github-actionspec-dashboard/baseline
+            -o "${{ runner.temp }}/github-actionspec-dashboard/baseline/baseline.zip"
+          unzip -q "${{ runner.temp }}/github-actionspec-dashboard/baseline/baseline.zip" -d "${{ runner.temp }}/github-actionspec-dashboard/baseline"
       - name: Generate matrix dashboard through the action
         id: matrix-dashboard
         continue-on-error: true
@@ -249,9 +261,9 @@ jobs:
           repo: .
           workflow: ci.yml
           actual: tests/fixtures/ci
-          report-file: .github-actionspec-dashboard/current/validation-report.json
-          baseline-report: .github-actionspec-dashboard/baseline/validation-report.json
-          dashboard-file: .github-actionspec-dashboard/current/dashboard.md
+          report-file: /github/runner_temp/github-actionspec-dashboard/current/validation-report.json
+          baseline-report: /github/runner_temp/github-actionspec-dashboard/baseline/validation-report.json
+          dashboard-file: /github/runner_temp/github-actionspec-dashboard/current/dashboard.md
           comment-pr: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
           github-token: ${{ github.token }}
       - name: Upload matrix dashboard artifact
@@ -260,8 +272,8 @@ jobs:
         with:
           name: ci-matrix-dashboard
           path: |
-            .github-actionspec-dashboard/current/validation-report.json
-            .github-actionspec-dashboard/current/dashboard.md
+            ${{ runner.temp }}/github-actionspec-dashboard/current/validation-report.json
+            ${{ runner.temp }}/github-actionspec-dashboard/current/dashboard.md
       - name: Generate coverage
         run: just coverage-ci
       - name: Upload coverage to Codecov
