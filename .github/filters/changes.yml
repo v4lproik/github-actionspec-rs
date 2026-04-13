@@ -18,3 +18,4 @@ infra:
 docs:
   - 'README.md'
   - 'AGENTS.md'
+  - 'docs/**'

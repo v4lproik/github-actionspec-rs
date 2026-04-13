@@ -8,6 +8,8 @@ Rust implementation of the GitHub Actions workflow contract validator.
 
 It keeps CUE as the intermediate language and uses the `cue` CLI for validation.
 
+Project site: https://v4lproik.github.io/github-actionspec-rs/
+
 ## Tooling
 
 This repo uses Docker for build, lint, test, and coverage so local development and CI run the same toolchain. `just` remains the repository entrypoint. `mise` is only kept for host-side commands such as `discover` and `validate`.
