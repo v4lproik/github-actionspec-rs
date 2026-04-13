@@ -504,7 +504,7 @@ jobs:
       - name: Deploy to GitHub Pages
         if: ${{ steps.pages-check.outputs.enabled == 'true' }}
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
       - name: Skip when Pages is not enabled
         if: ${{ steps.pages-check.outputs.enabled != 'true' }}
         run: |
