@@ -1,20 +1,20 @@
 :root {
-  --bg: #eef2f6;
-  --bg-soft: #f8fafc;
+  --bg: #e7edf5;
+  --bg-soft: #f4f7fb;
   --ink: #141823;
-  --ink-soft: #5a6474;
+  --ink-soft: #4f5a6b;
   --ink-inverse: #f5f7fb;
-  --surface: rgba(255, 255, 255, 0.82);
-  --line: rgba(20, 24, 35, 0.1);
+  --surface: rgba(255, 255, 255, 0.92);
+  --line: rgba(20, 24, 35, 0.12);
   --line-soft: rgba(255, 255, 255, 0.08);
-  --accent: #79e7dc;
-  --accent-strong: #45cfc1;
-  --accent-warm: #ff9b54;
-  --accent-warm-soft: rgba(255, 155, 84, 0.14);
-  --hero-top: #17132a;
-  --hero-bottom: #121821;
-  --shadow: 0 18px 52px rgba(16, 23, 34, 0.08);
-  --shadow-hero: 0 36px 90px rgba(2, 5, 12, 0.32);
+  --accent: #6fd7ff;
+  --accent-strong: #37b8f2;
+  --accent-warm: #ff7a1a;
+  --accent-warm-soft: rgba(255, 122, 26, 0.2);
+  --hero-top: #120f22;
+  --hero-bottom: #0d141d;
+  --shadow: 0 18px 52px rgba(16, 23, 34, 0.1);
+  --shadow-hero: 0 40px 100px rgba(2, 5, 12, 0.42);
   --radius-xl: 30px;
   --radius-lg: 22px;
   --radius-md: 16px;
@@ -60,9 +60,9 @@ pre {
   position: relative;
   color: var(--ink-inverse);
   background:
-    radial-gradient(circle at 52% 30%, rgba(255, 155, 84, 0.14), transparent 18%),
-    radial-gradient(circle at 18% 14%, rgba(121, 231, 220, 0.14), transparent 24%),
-    radial-gradient(circle at 82% 10%, rgba(122, 182, 255, 0.14), transparent 20%),
+    radial-gradient(circle at 52% 30%, rgba(255, 122, 26, 0.2), transparent 18%),
+    radial-gradient(circle at 18% 14%, rgba(111, 215, 255, 0.18), transparent 24%),
+    radial-gradient(circle at 82% 10%, rgba(122, 182, 255, 0.18), transparent 20%),
     linear-gradient(180deg, var(--hero-top) 0%, #171727 36%, var(--hero-bottom) 100%);
 }
 
@@ -112,7 +112,7 @@ pre {
   height: 2rem;
   border-radius: 0.8rem;
   overflow: hidden;
-  box-shadow: 0 8px 20px rgba(255, 155, 84, 0.14);
+  box-shadow: 0 10px 24px rgba(255, 122, 26, 0.22);
 }
 
 .brand-logo {
@@ -159,15 +159,15 @@ pre {
   gap: 0.65rem;
   margin-bottom: 1rem;
   padding: 0.42rem 0.7rem 0.42rem 0.5rem;
-  border: 1px solid rgba(255, 155, 84, 0.22);
+  border: 1px solid rgba(255, 122, 26, 0.34);
   border-radius: 999px;
-  background: linear-gradient(180deg, rgba(255, 155, 84, 0.12), rgba(255, 255, 255, 0.04));
+  background: linear-gradient(180deg, rgba(255, 122, 26, 0.18), rgba(255, 255, 255, 0.04));
   color: rgba(245, 247, 251, 0.82);
   font-size: 0.74rem;
   letter-spacing: 0.02em;
   box-shadow:
-    inset 0 0 0 1px rgba(255, 155, 84, 0.08),
-    0 10px 24px rgba(255, 155, 84, 0.08);
+    inset 0 0 0 1px rgba(255, 122, 26, 0.12),
+    0 12px 28px rgba(255, 122, 26, 0.12);
 }
 
 .product-chip-logo {
@@ -210,7 +210,7 @@ pre {
 
 .warm-accent {
   color: var(--accent-warm);
-  text-shadow: 0 0 22px rgba(255, 155, 84, 0.16);
+  text-shadow: 0 0 24px rgba(255, 122, 26, 0.26);
 }
 
 .hero-text {
@@ -254,7 +254,7 @@ pre {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 240, 229, 0.96));
   color: #101521;
   box-shadow:
-    0 14px 28px rgba(255, 155, 84, 0.18),
+    0 16px 32px rgba(255, 122, 26, 0.24),
     0 2px 0 rgba(255, 255, 255, 0.2) inset;
 }
 
@@ -293,7 +293,7 @@ pre {
 .hero-code-window {
   width: min(100%, 780px);
   margin-top: 1.8rem;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(111, 215, 255, 0.14);
   border-radius: 18px;
   overflow: hidden;
   background: #161d27;
@@ -318,10 +318,10 @@ pre {
 
 .code-tab-active {
   background:
-    linear-gradient(180deg, rgba(255, 155, 84, 0.24), rgba(255, 255, 255, 0.05)),
+    linear-gradient(180deg, rgba(255, 122, 26, 0.34), rgba(255, 255, 255, 0.05)),
     rgba(255, 255, 255, 0.08);
   color: var(--ink-inverse);
-  border: 1px solid rgba(255, 155, 84, 0.24);
+  border: 1px solid rgba(255, 122, 26, 0.4);
 }
 
 .code-window-body {
@@ -342,11 +342,11 @@ pre {
 
 .status-pill {
   padding: 0.26rem 0.52rem;
-  border: 1px solid rgba(255, 155, 84, 0.24);
+  border: 1px solid rgba(255, 122, 26, 0.42);
   border-radius: 999px;
   color: rgba(255, 229, 214, 0.94);
   font-size: 0.74rem;
-  background: rgba(255, 155, 84, 0.12);
+  background: rgba(255, 122, 26, 0.18);
 }
 
 .hero-proof {
@@ -373,10 +373,10 @@ pre {
 .hero-stage-grid {
   position: absolute;
   inset: 0;
-  border-top: 1px solid rgba(121, 231, 220, 0.22);
+  border-top: 1px solid rgba(111, 215, 255, 0.28);
   background-image:
-    linear-gradient(rgba(121, 231, 220, 0.18) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(121, 231, 220, 0.18) 1px, transparent 1px);
+    linear-gradient(rgba(111, 215, 255, 0.22) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(111, 215, 255, 0.22) 1px, transparent 1px);
   background-size: 80px 52px;
   transform: perspective(900px) rotateX(72deg);
   transform-origin: top center;
@@ -416,9 +416,9 @@ pre {
 
 .hero-stage-lane-left .stage-tile:nth-child(2),
 .hero-stage-lane-right .stage-tile:nth-child(2) {
-  border-color: rgba(255, 155, 84, 0.28);
-  background: linear-gradient(180deg, rgba(255, 155, 84, 0.12), rgba(22, 29, 39, 0.88));
-  box-shadow: 0 12px 26px rgba(255, 155, 84, 0.13);
+  border-color: rgba(255, 122, 26, 0.42);
+  background: linear-gradient(180deg, rgba(255, 122, 26, 0.22), rgba(22, 29, 39, 0.9));
+  box-shadow: 0 14px 30px rgba(255, 122, 26, 0.18);
 }
 
 .stage-focus {
@@ -428,14 +428,14 @@ pre {
   transform: translateX(-50%);
   width: min(100%, 260px);
   padding: 1rem;
-  border-color: rgba(255, 155, 84, 0.26);
+  border-color: rgba(255, 122, 26, 0.42);
   background:
-    linear-gradient(180deg, rgba(121, 231, 220, 0.09), rgba(255, 155, 84, 0.12)),
+    linear-gradient(180deg, rgba(111, 215, 255, 0.14), rgba(255, 122, 26, 0.2)),
     rgba(22, 29, 39, 0.94);
   box-shadow:
     0 18px 36px rgba(1, 4, 11, 0.34),
-    0 0 24px rgba(121, 231, 220, 0.15),
-    0 0 30px rgba(255, 155, 84, 0.14);
+    0 0 24px rgba(111, 215, 255, 0.2),
+    0 0 34px rgba(255, 122, 26, 0.22);
 }
 
 .stage-focus pre {
@@ -457,7 +457,7 @@ pre {
   border-radius: var(--radius-xl);
   background: var(--surface);
   box-shadow: var(--shadow);
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(10px);
 }
 
 .section-grid {
@@ -474,7 +474,7 @@ pre {
 }
 
 .summary-kicker {
-  color: #2d6171;
+  color: #1f5d83;
 }
 
 .summary-card h2 {
