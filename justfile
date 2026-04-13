@@ -1,43 +1,85 @@
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
+docker-image := env_var_or_default("GITHUB_ACTIONSPEC_DOCKER_IMAGE", "github-actionspec-rs-dev:local")
+runtime-image := env_var_or_default("GITHUB_ACTIONSPEC_RUNTIME_IMAGE", "github-actionspec-rs:local")
+docker-runner := "./scripts/docker/run.sh"
+docker-runtime-runner := "./scripts/docker/run-runtime.sh"
+
 default:
   @just --list
 
 install:
   mise install
 
+docker-build:
+  IMAGE_TAG={{docker-image}} docker buildx bake --load dev
+
+docker-build-runtime:
+  RUNTIME_IMAGE_TAG={{runtime-image}} docker buildx bake --load runtime
+
+docker-smoke-runtime:
+  {{docker-runtime-runner}} --help
+
+docker-run-runtime:
+  just docker-build-runtime
+  just docker-smoke-runtime
+
+docker-push-runtime image="docker.io/v4lproik/github-actionspec-rs:latest":
+  RUNTIME_IMAGE_TAG={{image}} docker buildx bake --push runtime
+
+runtime-ci:
+  just docker-build-runtime
+  just docker-smoke-runtime
+
 fmt:
-  mise exec -- cargo fmt
+  just docker-build
+  {{docker-runner}} cargo fmt
 
 fmt-check:
-  mise exec -- cargo fmt --check
+  just docker-build
+  {{docker-runner}} cargo fmt --check
 
 build:
-  mise exec -- cargo build --locked
+  just docker-build
+  {{docker-runner}} cargo build --locked
 
 check:
-  mise exec -- cargo check --locked
+  just docker-build
+  {{docker-runner}} cargo check --locked
 
 clippy:
-  mise exec -- cargo clippy --all-targets --all-features --locked -- -D warnings
+  just docker-build
+  {{docker-runner}} cargo clippy --all-targets --all-features --locked -- -D warnings
 
-lint: fmt-check clippy
+lint:
+  just docker-build
+  {{docker-runner}} cargo fmt --check
+  {{docker-runner}} cargo clippy --all-targets --all-features --locked -- -D warnings
 
 test:
-  mise exec -- cargo test --locked
+  just docker-build
+  {{docker-runner}} cargo test --locked
 
 coverage:
-  mise exec -- cargo llvm-cov --all-features --workspace --html
+  just docker-build
+  {{docker-runner}} cargo llvm-cov --all-features --workspace --html
 
 coverage-summary:
-  mise exec -- cargo llvm-cov --all-features --workspace --summary-only
+  just docker-build
+  {{docker-runner}} cargo llvm-cov --all-features --workspace --summary-only
 
 coverage-ci:
+  just docker-build
   # `cargo llvm-cov --output-path` does not create the parent directory for us.
   mkdir -p target/llvm-cov
-  mise exec -- cargo llvm-cov --all-features --workspace --lcov --output-path target/llvm-cov/lcov.info
+  {{docker-runner}} cargo llvm-cov --all-features --workspace --lcov --output-path target/llvm-cov/lcov.info
 
-ci: build lint test
+ci:
+  just docker-build
+  {{docker-runner}} cargo build --locked
+  {{docker-runner}} cargo fmt --check
+  {{docker-runner}} cargo clippy --all-targets --all-features --locked -- -D warnings
+  {{docker-runner}} cargo test --locked
 
 pr-create base="main":
   gh pr create --base {{base}} --fill

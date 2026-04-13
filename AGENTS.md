@@ -6,10 +6,13 @@
 - Target repository declarations live under `.github/actionspec/**/*.cue`.
 
 ## Commands
-- Use `mise` for tool management only.
+- Use Docker-backed `just` recipes for build, lint, test, and coverage.
+- Use `mise` for host-side tool management only.
 - Use `just` for repository commands.
 - Main commands:
   - `just install`
+  - `just docker-build`
+  - `just docker-build-runtime`
   - `just fmt`
   - `just build`
   - `just lint`
@@ -24,11 +27,14 @@
 
 ## Rules
 - Keep `.mise.toml` minimal and limited to tool/version management.
+- Keep the Docker image focused on build/test/lint/coverage parity between local development and CI.
+- Keep `docker-bake.hcl` as the single place for Docker build target configuration.
 - Keep `justfile` as the canonical command interface.
+- Keep a dedicated runtime image target available for distributing the CLI with bundled schema files and the `cue` binary.
 - Do not add raw `cargo`, `gh`, or `mise exec` command flows to docs, scripts, or workflows when a `just` recipe can own them.
 - Expose new command flows through `just` first, then document them in `README.md`.
 - Preserve compatibility with repository-owned `.cue` declarations already used in `factmachine-monorepo`.
-- `cue` is still an external runtime dependency and must be on `PATH` for real validation runs.
+- `cue` is still an external runtime dependency and must be on `PATH` for host-side validation runs.
 - Repository automation should invoke `just`, including CI jobs and PR creation flows.
 
 ## Git Conventions
