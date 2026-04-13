@@ -6,11 +6,13 @@ inputs:
     required: false
     default: .
   workflow:
-    description: Workflow file name to validate, for example build-infrastructure.yml.
-    required: true
+    description: Workflow file name to validate. Optional when the provided payloads all belong to the same workflow.
+    required: false
+    default: ""
   actual:
     description: Path to a normalized workflow run JSON payload, a directory of JSON payloads, or a newline-separated list of payload paths.
-    required: true
+    required: false
+    default: .github/actionspec-artifacts
   declarations-dir:
     description: Path to the declarations directory inside the target repository.
     required: false

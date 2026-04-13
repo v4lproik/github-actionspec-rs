@@ -48,7 +48,7 @@ Commands:
 
 - `github-actionspec discover --repo <path>`
 - `github-actionspec validate --schema <file> --schema <file> --contract <file> --actual <file>`
-- `github-actionspec validate-repo --repo <path> --workflow <name> --actual <file>`
+- `github-actionspec validate-repo --repo <path> [--workflow <name>] --actual <file>`
 
 ## GitHub Action
 
@@ -57,19 +57,36 @@ This repository also exposes a Docker-based GitHub Action for the common `valida
 ```yaml
 - uses: actions/checkout@v6
 
-- name: Validate build-infrastructure contract
+- name: Validate workflow contracts
+  uses: v4lproik/github-actionspec-rs@main
+
+- name: Validate one workflow explicitly
   uses: v4lproik/github-actionspec-rs@main
   with:
-    repo: .
     workflow: build-infrastructure.yml
     actual: .github/actionspec-artifacts/build-infrastructure.json
+```
+
+By convention, the action defaults to:
+
+- `repo: .`
+- `declarations-dir: .github/actionspec`
+- `actual: .github/actionspec-artifacts`
+- inferring `workflow` from the payloads when they all belong to the same workflow
+
+That means the shortest setup is just:
+
+```yaml
+- uses: actions/checkout@v6
+
+- uses: v4lproik/github-actionspec-rs@main
 ```
 
 Inputs:
 
 - `repo`: target repository root containing `.github/actionspec` declarations. Defaults to `.`
-- `workflow`: workflow file name to validate
-- `actual`: path to one normalized workflow run JSON payload, a directory containing JSON payloads, or a newline-separated list of payload paths
+- `workflow`: workflow file name to validate. Optional when the provided payloads all belong to the same workflow
+- `actual`: path to one normalized workflow run JSON payload, a directory containing JSON payloads, or a newline-separated list of payload paths. Defaults to `.github/actionspec-artifacts`
 - `declarations-dir`: custom declarations directory. Defaults to `.github/actionspec`
 
 Examples:
@@ -78,22 +95,21 @@ Examples:
 - name: Validate one payload
   uses: v4lproik/github-actionspec-rs@main
   with:
-    repo: .
     workflow: build-infrastructure.yml
     actual: .github/actionspec-artifacts/build-infrastructure.json
 
 - name: Validate a whole folder of payloads
   uses: v4lproik/github-actionspec-rs@main
   with:
-    repo: .
     workflow: build-infrastructure.yml
     actual: .github/actionspec-artifacts/passing
+
+- name: Validate using the default artifacts directory and inferred workflow
+  uses: v4lproik/github-actionspec-rs@main
 
 - name: Validate an explicit list of payloads
   uses: v4lproik/github-actionspec-rs@main
   with:
-    repo: .
-    workflow: build-infrastructure.yml
     actual: |
       .github/actionspec-artifacts/staging.json
       .github/actionspec-artifacts/production.json

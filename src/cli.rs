@@ -30,7 +30,7 @@ pub enum Command {
         #[arg(long)]
         repo: PathBuf,
         #[arg(long)]
-        workflow: String,
+        workflow: Option<String>,
         #[arg(long, required = true)]
         actual: Vec<PathBuf>,
         #[arg(long = "declarations-dir", default_value = ".github/actionspec")]
@@ -146,7 +146,35 @@ mod tests {
                 declarations_dir,
             } => {
                 assert_eq!(repo, PathBuf::from("/tmp/repo"));
-                assert_eq!(workflow, "build-infrastructure.yml");
+                assert_eq!(workflow, Some("build-infrastructure.yml".to_owned()));
+                assert_eq!(actual, vec![PathBuf::from("actual.json")]);
+                assert_eq!(declarations_dir, PathBuf::from(".github/actionspec"));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn validate_repo_accepts_missing_workflow_for_inference() {
+        let cli = Cli::try_parse_from([
+            "github-actionspec",
+            "validate-repo",
+            "--repo",
+            "/tmp/repo",
+            "--actual",
+            "actual.json",
+        ])
+        .expect("cli should parse");
+
+        match cli.command {
+            Command::ValidateRepo {
+                repo,
+                workflow,
+                actual,
+                declarations_dir,
+            } => {
+                assert_eq!(repo, PathBuf::from("/tmp/repo"));
+                assert_eq!(workflow, None);
                 assert_eq!(actual, vec![PathBuf::from("actual.json")]);
                 assert_eq!(declarations_dir, PathBuf::from(".github/actionspec"));
             }

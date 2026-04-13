@@ -31,6 +31,11 @@ pub enum AppError {
     #[error("No readable JSON files were found under directory: {0}")]
     NoActualFilesFound(PathBuf),
 
+    #[error(
+        "Could not infer a single workflow from the provided actual payloads. Pass --workflow explicitly. Found workflows: {0}"
+    )]
+    AmbiguousActualWorkflows(String),
+
     #[error(transparent)]
     Io(#[from] std::io::Error),
 

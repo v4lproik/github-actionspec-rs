@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -6,6 +6,7 @@ use std::process::Command;
 use crate::contracts::{declaration_schema_path, workflow_schema_path};
 use crate::discovery::find_declaration;
 use crate::errors::AppError;
+use crate::types::WorkflowRunEnvelope;
 
 #[derive(Debug, Clone)]
 pub struct ValidateContractOptions {
@@ -19,7 +20,7 @@ pub struct ValidateContractOptions {
 #[derive(Debug, Clone)]
 pub struct ValidateRepoWorkflowOptions {
     pub repo_root: PathBuf,
-    pub workflow: String,
+    pub workflow: Option<String>,
     pub actual_paths: Vec<PathBuf>,
     pub declarations_dir: PathBuf,
     pub cwd: Option<PathBuf>,
@@ -72,6 +73,27 @@ fn resolve_actual_paths(paths: &[PathBuf]) -> Result<Vec<PathBuf>, AppError> {
     }
 
     Ok(resolved_paths)
+}
+
+fn infer_workflow_from_actuals(paths: &[PathBuf]) -> Result<String, AppError> {
+    let mut workflows = BTreeSet::new();
+
+    for path in paths {
+        let contents = fs::read_to_string(path)?;
+        let envelope: WorkflowRunEnvelope = serde_json::from_str(&contents)?;
+        workflows.insert(envelope.run.workflow);
+    }
+
+    if workflows.len() == 1 {
+        return Ok(workflows
+            .into_iter()
+            .next()
+            .expect("single workflow should exist"));
+    }
+
+    Err(AppError::AmbiguousActualWorkflows(
+        workflows.into_iter().collect::<Vec<_>>().join(", "),
+    ))
 }
 
 fn apply_env(command: &mut Command, env: &Option<HashMap<String, String>>) {
@@ -147,18 +169,28 @@ pub fn validate_contract(options: ValidateContractOptions) -> Result<(), AppErro
 }
 
 pub fn validate_repo_workflow(options: ValidateRepoWorkflowOptions) -> Result<(), AppError> {
-    let declaration = find_declaration(
-        &options.repo_root,
-        &options.workflow,
-        Some(&options.declarations_dir),
-    )?;
+    let ValidateRepoWorkflowOptions {
+        repo_root,
+        workflow,
+        actual_paths,
+        declarations_dir,
+        cwd,
+        env,
+    } = options;
+
+    let workflow = match workflow {
+        Some(workflow) if !workflow.trim().is_empty() => workflow,
+        _ => infer_workflow_from_actuals(&resolve_actual_paths(&actual_paths)?)?,
+    };
+
+    let declaration = find_declaration(&repo_root, &workflow, Some(&declarations_dir))?;
 
     validate_contract(ValidateContractOptions {
         schema_paths: vec![workflow_schema_path(), declaration_schema_path()],
         contract_path: declaration.declaration_path,
-        actual_paths: options.actual_paths,
-        cwd: options.cwd,
-        env: options.env,
+        actual_paths,
+        cwd,
+        env,
     })
 }
 
@@ -272,7 +304,7 @@ mod tests {
 
         let error = validate_repo_workflow(ValidateRepoWorkflowOptions {
             repo_root: temp.path().to_path_buf(),
-            workflow: "missing.yml".to_owned(),
+            workflow: Some("missing.yml".to_owned()),
             actual_paths: vec![actual],
             declarations_dir: PathBuf::from(".github/actionspec"),
             cwd: None,
@@ -329,6 +361,73 @@ mod tests {
         });
 
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_repo_workflow_infers_workflow_from_single_actual() {
+        let temp = tempdir().expect("temp dir should be created");
+        let declaration_dir = temp.path().join(".github/actionspec/build");
+        fs::create_dir_all(&declaration_dir).expect("declaration dir should be created");
+        fs::write(
+            declaration_dir.join("staging.cue"),
+            "package actionspec\n\nworkflow: \"demo.yml\"\n\nrun: #Declaration.run & {\n  workflow: workflow\n  jobs: {\n    sample: {\n      result: \"success\"\n    }\n  }\n}\n",
+        )
+        .expect("declaration should be written");
+
+        let actual = temp.path().join("actual.json");
+        fs::write(
+            &actual,
+            "{\"run\":{\"workflow\":\"demo.yml\",\"jobs\":{\"sample\":{\"result\":\"success\"}}}}",
+        )
+        .expect("actual should be written");
+
+        let env = install_fake_cue(
+            temp.path(),
+            "#!/bin/sh\nif [ \"$1\" = \"version\" ]; then\n  exit 0\nfi\nif [ \"$1\" = \"vet\" ]; then\n  exit 0\nfi\nexit 1\n",
+        );
+
+        validate_repo_workflow(ValidateRepoWorkflowOptions {
+            repo_root: temp.path().to_path_buf(),
+            workflow: None,
+            actual_paths: vec![actual],
+            declarations_dir: PathBuf::from(".github/actionspec"),
+            cwd: None,
+            env: Some(env),
+        })
+        .expect("validation should succeed");
+    }
+
+    #[test]
+    fn validate_repo_workflow_errors_when_actuals_span_multiple_workflows() {
+        let temp = tempdir().expect("temp dir should be created");
+        let first = temp.path().join("first.json");
+        let second = temp.path().join("second.json");
+        fs::write(
+            &first,
+            "{\"run\":{\"workflow\":\"build.yml\",\"jobs\":{\"sample\":{\"result\":\"success\"}}}}",
+        )
+        .expect("first actual should be written");
+        fs::write(
+            &second,
+            "{\"run\":{\"workflow\":\"deploy.yml\",\"jobs\":{\"sample\":{\"result\":\"success\"}}}}",
+        )
+        .expect("second actual should be written");
+
+        let error = validate_repo_workflow(ValidateRepoWorkflowOptions {
+            repo_root: temp.path().to_path_buf(),
+            workflow: None,
+            actual_paths: vec![first, second],
+            declarations_dir: PathBuf::from(".github/actionspec"),
+            cwd: None,
+            env: None,
+        })
+        .expect_err("validation should fail");
+
+        assert!(error
+            .to_string()
+            .contains("Could not infer a single workflow from the provided actual payloads"));
+        assert!(error.to_string().contains("build.yml"));
+        assert!(error.to_string().contains("deploy.yml"));
     }
 
     #[test]
