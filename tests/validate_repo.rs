@@ -91,6 +91,46 @@ fn validates_repo_contract_globbed_actuals_through_cli() {
 }
 
 #[test]
+fn reports_repo_validation_context_on_failure() {
+    let repo = tempdir().unwrap();
+    support::write_declaration(
+        repo.path(),
+        ".github/actionspec/build-infrastructure/staging.cue",
+        "build-infrastructure.yml",
+    );
+    let actual = repo.path().join("actual.json");
+    support::write_actual(&actual, "build-infrastructure.yml");
+    let actual_display = actual.display().to_string();
+    let declaration_display = repo
+        .path()
+        .join(".github/actionspec/build-infrastructure/staging.cue")
+        .display()
+        .to_string();
+    let env = support::install_fake_cue(&repo, "failure");
+
+    let mut command = Command::cargo_bin("github-actionspec").unwrap();
+    command
+        .envs(env)
+        .arg("validate-repo")
+        .arg("--repo")
+        .arg(repo.path())
+        .arg("--workflow")
+        .arg("build-infrastructure.yml")
+        .arg("--actual")
+        .arg(&actual);
+
+    command
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "Validation failed for workflow \"build-infrastructure.yml\"",
+        ))
+        .stderr(predicate::str::contains(&declaration_display))
+        .stderr(predicate::str::contains(&actual_display))
+        .stderr(predicate::str::contains("cue vet exit code 9"));
+}
+
+#[test]
 fn discovers_repo_contracts_through_cli() {
     let repo = tempdir().unwrap();
     support::write_declaration(

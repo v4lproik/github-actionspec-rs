@@ -54,6 +54,8 @@ Commands:
 
 This repository also exposes a Docker-based GitHub Action for the common `validate-repo` flow. The action runs the bundled `github-actionspec` binary together with the bundled `cue` runtime, so the calling workflow only needs a checked out repository and a normalized JSON payload.
 
+When validation fails, the CLI and action output identify the workflow, declaration, payload file, and the underlying `cue vet` diagnostic so failures are actionable directly from local runs and GitHub Actions logs.
+
 ```yaml
 - uses: actions/checkout@v6
 

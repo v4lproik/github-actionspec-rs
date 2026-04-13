@@ -95,6 +95,8 @@ fn validates_globbed_actuals_through_cli() {
 fn fails_when_cue_vet_fails() {
     let temp = tempdir().unwrap();
     let (schema, contract, actual) = support::write_validation_fixture(temp.path(), "demo");
+    let contract_display = contract.display().to_string();
+    let actual_display = actual.display().to_string();
 
     let env = support::install_fake_cue(&temp, "failure");
     let error = validate_contract(ValidateContractOptions {
@@ -106,7 +108,11 @@ fn fails_when_cue_vet_fails() {
     })
     .unwrap_err();
 
+    assert!(error.to_string().contains("Validation failed for contract"));
+    assert!(error.to_string().contains("cue vet exit code 9"));
+    assert!(error.to_string().contains(&contract_display));
+    assert!(error.to_string().contains(&actual_display));
     assert!(error
         .to_string()
-        .contains("cue vet failed with exit code 9"));
+        .contains("cue produced no diagnostic output"));
 }

@@ -16,8 +16,15 @@ pub enum AppError {
     #[error("Failed to execute `cue version`.")]
     CueVersionFailed,
 
-    #[error("cue vet failed with exit code {0}")]
-    CueVetFailed(String),
+    #[error(
+        "Validation failed for contract {contract_path} against payload {actual_path} (cue vet exit code {exit_code})\n{details}"
+    )]
+    CueVetFailed {
+        exit_code: String,
+        contract_path: PathBuf,
+        actual_path: PathBuf,
+        details: String,
+    },
 
     #[error("At least one schema path is required.")]
     MissingSchemaPaths,
@@ -33,6 +40,17 @@ pub enum AppError {
 
     #[error("No files matched actual glob pattern: {0}")]
     NoActualGlobMatches(String),
+
+    #[error(
+        "Validation failed for workflow \"{workflow}\" using declaration {declaration_path} against payload {actual_path} (cue vet exit code {exit_code})\n{details}"
+    )]
+    RepoValidationFailed {
+        workflow: String,
+        declaration_path: PathBuf,
+        actual_path: PathBuf,
+        exit_code: String,
+        details: String,
+    },
 
     #[error(transparent)]
     GlobPattern(#[from] glob::PatternError),

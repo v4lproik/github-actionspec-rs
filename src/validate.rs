@@ -113,6 +113,20 @@ fn apply_env(command: &mut Command, env: &Option<HashMap<String, String>>) {
     }
 }
 
+fn cue_failure_details(output: &std::process::Output) -> String {
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+    if !stderr.is_empty() {
+        return stderr;
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+    if !stdout.is_empty() {
+        return stdout;
+    }
+
+    "cue produced no diagnostic output".to_owned()
+}
+
 fn cue_command(
     env: &Option<HashMap<String, String>>,
     cwd: Option<&Path>,
@@ -160,14 +174,18 @@ pub fn validate_contract(options: ValidateContractOptions) -> Result<(), AppErro
         command.arg(&options.contract_path);
         command.arg(actual_path);
 
-        let status = command.status()?;
-        if !status.success() {
-            return Err(AppError::CueVetFailed(
-                status
+        let output = command.output()?;
+        if !output.status.success() {
+            return Err(AppError::CueVetFailed {
+                exit_code: output
+                    .status
                     .code()
                     .map(|code| code.to_string())
                     .unwrap_or_else(|| "unknown".to_owned()),
-            ));
+                contract_path: options.contract_path.clone(),
+                actual_path: actual_path.clone(),
+                details: cue_failure_details(&output),
+            });
         }
     }
 
@@ -181,12 +199,30 @@ pub fn validate_repo_workflow(options: ValidateRepoWorkflowOptions) -> Result<()
         Some(&options.declarations_dir),
     )?;
 
+    let declaration_path = declaration.declaration_path.clone();
+    let workflow = options.workflow.clone();
+
     validate_contract(ValidateContractOptions {
         schema_paths: vec![workflow_schema_path(), declaration_schema_path()],
         contract_path: declaration.declaration_path,
         actual_paths: options.actual_paths,
         cwd: options.cwd,
         env: options.env,
+    })
+    .map_err(|error| match error {
+        AppError::CueVetFailed {
+            exit_code,
+            actual_path,
+            details,
+            ..
+        } => AppError::RepoValidationFailed {
+            workflow,
+            declaration_path,
+            actual_path,
+            exit_code,
+            details,
+        },
+        other => other,
     })
 }
 
@@ -463,5 +499,48 @@ mod tests {
         assert!(error
             .to_string()
             .contains(missing_glob.to_string_lossy().as_ref()));
+    }
+
+    #[test]
+    fn validate_contract_includes_cue_stderr_in_failure_output() {
+        let temp = tempdir().expect("temp dir should be created");
+        let schema = temp.path().join("schema.cue");
+        let contract = temp.path().join("contract.cue");
+        let actual = temp.path().join("actual.json");
+        fs::write(
+            &schema,
+            "package actionspec\n#WorkflowRun: {workflow: string, jobs: [string]: {result: string}}\n",
+        )
+        .expect("schema should be written");
+        fs::write(
+            &contract,
+            "package actionspec\nrun: #WorkflowRun & {workflow: \"demo\", jobs: {build: {result: \"success\"}}}\n",
+        )
+        .expect("contract should be written");
+        fs::write(
+            &actual,
+            "{\"run\":{\"workflow\":\"demo\",\"jobs\":{\"build\":{\"result\":\"success\"}}}}",
+        )
+        .expect("actual should be written");
+
+        let env = install_fake_cue(
+            temp.path(),
+            "#!/bin/sh\nif [ \"$1\" = \"version\" ]; then\n  exit 0\nfi\nif [ \"$1\" = \"vet\" ]; then\n  echo \"missing field jobs.build.outputs\" 1>&2\n  exit 9\nfi\nexit 1\n",
+        );
+
+        let error = validate_contract(ValidateContractOptions {
+            schema_paths: vec![schema],
+            contract_path: contract.clone(),
+            actual_paths: vec![actual.clone()],
+            cwd: None,
+            env: Some(env),
+        })
+        .expect_err("validation should fail");
+
+        let message = error.to_string();
+        assert!(message.contains("Validation failed for contract"));
+        assert!(message.contains(contract.to_string_lossy().as_ref()));
+        assert!(message.contains(actual.to_string_lossy().as_ref()));
+        assert!(message.contains("missing field jobs.build.outputs"));
     }
 }
