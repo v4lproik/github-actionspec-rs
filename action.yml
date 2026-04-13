@@ -1,5 +1,10 @@
 name: github-actionspec validate-repo
 description: Validate a normalized GitHub Actions workflow run against a repository-owned CUE declaration.
+outputs:
+  report-path:
+    description: Path to the JSON validation report written by the action.
+  dashboard-path:
+    description: Path to the markdown dashboard written by the action.
 inputs:
   repo:
     description: Path to the target repository containing .github/actionspec declarations.
@@ -17,9 +22,42 @@ inputs:
     description: Path to the declarations directory inside the target repository.
     required: false
     default: .github/actionspec
+  report-file:
+    description: Path where the action should write the JSON validation report.
+    required: false
+    default: .github-actionspec-dashboard/current/validation-report.json
+  baseline-report:
+    description: Optional path to a previous JSON validation report used to render dashboard diffs.
+    required: false
+    default: ""
+  dashboard-file:
+    description: Path where the action should write the markdown matrix dashboard.
+    required: false
+    default: .github-actionspec-dashboard/current/dashboard.md
+  write-summary:
+    description: Whether to append the rendered dashboard to the GitHub Actions job summary.
+    required: false
+    default: "true"
+  comment-pr:
+    description: Whether to upsert the rendered dashboard as a PR comment when the workflow runs on a pull request.
+    required: false
+    default: "false"
+  comment-title:
+    description: Title used for the PR comment when comment-pr is enabled.
+    required: false
+    default: Workflow Matrix Dashboard
+  comment-tag:
+    description: Stable tag used to find and update the existing PR matrix comment.
+    required: false
+    default: github-actionspec-matrix
+  github-token:
+    description: GitHub token used for PR comment upserts when comment-pr is enabled.
+    required: false
+    default: ""
 runs:
   using: docker
   image: Dockerfile
+  entrypoint: /usr/local/bin/github-actionspec-action
   args:
     - validate-repo
     - --repo

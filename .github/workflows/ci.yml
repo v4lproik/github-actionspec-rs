@@ -241,20 +241,19 @@ jobs:
             -L "${BASELINE_URL}" \
             -o .github-actionspec-dashboard/baseline/baseline.zip
           unzip -q .github-actionspec-dashboard/baseline/baseline.zip -d .github-actionspec-dashboard/baseline
-      - name: Generate matrix dashboard
-        run: |
-          if [[ -f .github-actionspec-dashboard/baseline/validation-report.json ]]; then
-            just dashboard-report \
-              .github-actionspec-dashboard/current/validation-report.json \
-              .github-actionspec-dashboard/dashboard.md \
-              .github-actionspec-dashboard/baseline/validation-report.json
-          else
-            just dashboard-report \
-              .github-actionspec-dashboard/current/validation-report.json \
-              .github-actionspec-dashboard/dashboard.md
-          fi
-      - name: Add matrix dashboard to summary
-        run: cat .github-actionspec-dashboard/dashboard.md >> "${GITHUB_STEP_SUMMARY}"
+      - name: Generate matrix dashboard through the action
+        id: matrix-dashboard
+        continue-on-error: true
+        uses: ./
+        with:
+          repo: .
+          workflow: ci.yml
+          actual: tests/fixtures/ci
+          report-file: .github-actionspec-dashboard/current/validation-report.json
+          baseline-report: .github-actionspec-dashboard/baseline/validation-report.json
+          dashboard-file: .github-actionspec-dashboard/current/dashboard.md
+          comment-pr: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+          github-token: ${{ github.token }}
       - name: Upload matrix dashboard artifact
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
@@ -262,53 +261,7 @@ jobs:
           name: ci-matrix-dashboard
           path: |
             .github-actionspec-dashboard/current/validation-report.json
-            .github-actionspec-dashboard/dashboard.md
-      - name: Comment matrix on PR
-        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
-        uses: actions/github-script@v8
-        env:
-          MATRIX_BASELINE_SOURCE: ${{ steps.baseline-matrix.outputs.baseline_source }}
-        with:
-          script: |
-            const fs = require("fs");
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-            const issue_number = context.issue.number;
-            const marker = "<!-- github-actionspec-matrix -->";
-            const dashboard = fs.readFileSync(".github-actionspec-dashboard/dashboard.md", "utf8");
-            const baselineSource = process.env.MATRIX_BASELINE_SOURCE;
-            const body = [
-              marker,
-              "## Workflow Matrix Dashboard",
-              baselineSource ? `Baseline: \`${baselineSource}\`` : "Baseline: `none`",
-              "",
-              dashboard,
-            ].join("\n");
-
-            const comments = await github.paginate(github.rest.issues.listComments, {
-              owner,
-              repo,
-              issue_number,
-              per_page: 100,
-            });
-
-            const existing = comments.find((comment) => comment.body?.includes(marker));
-
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner,
-                repo,
-                comment_id: existing.id,
-                body,
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner,
-                repo,
-                issue_number,
-                body,
-              });
-            }
+            .github-actionspec-dashboard/current/dashboard.md
       - name: Generate coverage
         run: just coverage-ci
       - name: Upload coverage to Codecov

@@ -25,7 +25,7 @@ RUN GOBIN=/cue-bin go install cuelang.org/go/cmd/cue@${CUE_VERSION}
 FROM debian:bookworm-slim AS runtime
 
 RUN apt-get update \
-    && apt-get install --yes --no-install-recommends ca-certificates \
+    && apt-get install --yes --no-install-recommends ca-certificates curl jq \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /workspace
@@ -34,5 +34,7 @@ WORKDIR /workspace
 COPY --from=runtime-builder /workspace/schema ./schema
 COPY --from=runtime-builder /workspace/target/release/github-actionspec /usr/local/bin/github-actionspec
 COPY --from=cue-builder /cue-bin/cue /usr/local/bin/cue
+COPY scripts/action/entrypoint.sh /usr/local/bin/github-actionspec-action
+RUN chmod +x /usr/local/bin/github-actionspec-action
 
 ENTRYPOINT ["github-actionspec"]
