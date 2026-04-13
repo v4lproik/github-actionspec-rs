@@ -10,7 +10,7 @@ inputs:
     required: false
     default: ""
   actual:
-    description: Path to a normalized workflow run JSON payload, a directory of JSON payloads, or a newline-separated list of payload paths.
+    description: Path to a normalized workflow run JSON payload, a directory of JSON payloads, a glob pattern, or a newline-separated list of payload paths or glob patterns.
     required: false
     default: .github/actionspec-artifacts
   declarations-dir:

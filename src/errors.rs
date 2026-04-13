@@ -36,6 +36,12 @@ pub enum AppError {
     )]
     AmbiguousActualWorkflows(String),
 
+    #[error("No files matched actual glob pattern: {0}")]
+    NoActualGlobMatches(String),
+
+    #[error(transparent)]
+    GlobPattern(#[from] glob::PatternError),
+
     #[error(transparent)]
     Io(#[from] std::io::Error),
 
