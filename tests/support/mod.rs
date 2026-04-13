@@ -53,17 +53,18 @@ pub fn write_validation_fixture(
 }
 
 pub fn install_fake_cue(temp_dir: &TempDir, mode: &str) -> HashMap<String, String> {
-    let bin_dir = temp_dir.path().join("bin");
+    let script = format!(
+        "#!/bin/sh\nif [ \"$1\" = \"version\" ]; then\n  exit 0\nfi\nif [ \"$1\" = \"vet\" ]; then\n  if [ \"{mode}\" = \"success\" ]; then\n    exit 0\n  fi\n  exit 9\nfi\nexit 1\n"
+    );
+    install_fake_cue_script(temp_dir.path(), &script)
+}
+
+pub fn install_fake_cue_script(temp_root: &Path, script: &str) -> HashMap<String, String> {
+    let bin_dir = temp_root.join("bin");
     fs::create_dir_all(&bin_dir).unwrap();
     let cue_path = bin_dir.join("cue");
     // Keep the shim minimal: tests only need `cue version` and `cue vet` to behave predictably.
-    fs::write(
-        &cue_path,
-        format!(
-            "#!/bin/sh\nif [ \"$1\" = \"version\" ]; then\n  exit 0\nfi\nif [ \"$1\" = \"vet\" ]; then\n  if [ \"{mode}\" = \"success\" ]; then\n    exit 0\n  fi\n  exit 9\nfi\nexit 1\n"
-        ),
-    )
-    .unwrap();
+    fs::write(&cue_path, script).unwrap();
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;

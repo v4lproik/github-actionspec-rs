@@ -111,6 +111,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
+      pull-requests: write
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -128,6 +129,9 @@ jobs:
           repo: .
           workflow: ci.yml
           actual: tests/fixtures/ci/passing
+          report-file: /github/runner_temp/github-actionspec-smoke/passing-dir-report.json
+          dashboard-file: /github/runner_temp/github-actionspec-smoke/passing-dir-dashboard.md
+          write-summary: false
       - name: Validate passing fixture list
         uses: ./
         with:
@@ -136,6 +140,9 @@ jobs:
           actual: |
             tests/fixtures/ci/ci-main-success.json
             tests/fixtures/ci/ci-main-pages.json
+          report-file: /github/runner_temp/github-actionspec-smoke/passing-list-report.json
+          dashboard-file: /github/runner_temp/github-actionspec-smoke/passing-list-dashboard.md
+          write-summary: false
       - name: Reject non-main workflow run
         id: wrong-ref
         continue-on-error: true
@@ -144,6 +151,9 @@ jobs:
           repo: .
           workflow: ci.yml
           actual: tests/fixtures/ci/ci-non-main-ref.json
+          report-file: /github/runner_temp/github-actionspec-smoke/wrong-ref-report.json
+          dashboard-file: /github/runner_temp/github-actionspec-smoke/wrong-ref-dashboard.md
+          write-summary: false
       - name: Reject skipped build on main
         id: skipped-build
         continue-on-error: true
@@ -152,6 +162,9 @@ jobs:
           repo: .
           workflow: ci.yml
           actual: tests/fixtures/ci/ci-build-skipped.json
+          report-file: /github/runner_temp/github-actionspec-smoke/skipped-build-report.json
+          dashboard-file: /github/runner_temp/github-actionspec-smoke/skipped-build-dashboard.md
+          write-summary: false
       - name: Validate expected smoke outcomes
         if: ${{ always() }}
         run: |
@@ -166,6 +179,101 @@ jobs:
             echo "::error::The skipped build fixture should fail validation."
             exit 1
           fi
+      - name: Prepare matrix dashboard workspace
+        run: mkdir -p "${{ runner.temp }}/github-actionspec-dashboard/current" "${{ runner.temp }}/github-actionspec-dashboard/baseline"
+      - name: Generate current validation report
+        id: current-matrix
+        continue-on-error: true
+        run: just validate-repo-report . ci.yml tests/fixtures/ci "${{ runner.temp }}/github-actionspec-dashboard/current/validation-report.json"
+      - name: Find baseline matrix artifact
+        id: baseline-matrix
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const workflowId = "ci.yml";
+            const artifactName = "ci-matrix-dashboard";
+
+            async function findArtifactUrl(branch, eventName) {
+              const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
+                owner,
+                repo,
+                workflow_id: workflowId,
+                branch,
+                event: eventName,
+                per_page: 50,
+              });
+
+              for (const run of runs) {
+                if (run.id === context.runId || run.status !== "completed") {
+                  continue;
+                }
+
+                const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
+                  owner,
+                  repo,
+                  run_id: run.id,
+                  per_page: 100,
+                });
+
+                const artifact = artifacts.data.artifacts.find(
+                  (entry) => entry.name === artifactName && !entry.expired,
+                );
+
+                if (artifact) {
+                  core.setOutput("baseline_run_id", String(run.id));
+                  core.setOutput("baseline_source", `${eventName}:${branch}`);
+                  return artifact.archive_download_url;
+                }
+              }
+
+              return "";
+            }
+
+            let url = "";
+            if (context.eventName === "pull_request" && context.payload.pull_request?.head?.ref) {
+              url = await findArtifactUrl(context.payload.pull_request.head.ref, "pull_request");
+            }
+
+            if (!url) {
+              url = await findArtifactUrl("main", "push");
+            }
+
+            core.setOutput("download_url", url);
+      - name: Download baseline matrix artifact
+        if: ${{ steps.baseline-matrix.outputs.download_url != '' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          BASELINE_URL: ${{ steps.baseline-matrix.outputs.download_url }}
+        run: |
+          curl -fsSL \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -L "${BASELINE_URL}" \
+            -o "${{ runner.temp }}/github-actionspec-dashboard/baseline/baseline.zip"
+          unzip -q "${{ runner.temp }}/github-actionspec-dashboard/baseline/baseline.zip" -d "${{ runner.temp }}/github-actionspec-dashboard/baseline"
+      - name: Generate matrix dashboard through the action
+        id: matrix-dashboard
+        continue-on-error: true
+        uses: ./
+        with:
+          repo: .
+          workflow: ci.yml
+          actual: tests/fixtures/ci
+          report-file: /github/runner_temp/github-actionspec-dashboard/current/validation-report.json
+          baseline-report: /github/runner_temp/github-actionspec-dashboard/baseline/validation-report.json
+          dashboard-file: /github/runner_temp/github-actionspec-dashboard/current/dashboard.md
+          comment-pr: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+          github-token: ${{ github.token }}
+      - name: Upload matrix dashboard artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-matrix-dashboard
+          path: |
+            ${{ runner.temp }}/github-actionspec-dashboard/current/validation-report.json
+            ${{ runner.temp }}/github-actionspec-dashboard/current/dashboard.md
       - name: Generate coverage
         run: just coverage-ci
       - name: Upload coverage to Codecov

@@ -8,7 +8,9 @@ use glob::glob;
 use crate::contracts::{declaration_schema_path, workflow_schema_path};
 use crate::discovery::find_declaration;
 use crate::errors::AppError;
-use crate::types::WorkflowRunEnvelope;
+use crate::types::{
+    ActualValidationReport, ValidationReport, ValidationStatus, WorkflowRunEnvelope,
+};
 
 #[derive(Debug, Clone)]
 pub struct ValidateContractOptions {
@@ -25,8 +27,15 @@ pub struct ValidateRepoWorkflowOptions {
     pub workflow: Option<String>,
     pub actual_paths: Vec<PathBuf>,
     pub declarations_dir: PathBuf,
+    pub report_file: Option<PathBuf>,
     pub cwd: Option<PathBuf>,
     pub env: Option<HashMap<String, String>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ValidateRepoWorkflowResult {
+    pub report: ValidationReport,
+    pub failed_count: usize,
 }
 
 fn assert_readable(path: &Path) -> Result<(), AppError> {
@@ -124,6 +133,11 @@ fn infer_workflow_from_actuals(paths: &[PathBuf]) -> Result<String, AppError> {
     ))
 }
 
+fn read_workflow_run(path: &Path) -> Result<WorkflowRunEnvelope, AppError> {
+    let contents = fs::read_to_string(path)?;
+    Ok(serde_json::from_str(&contents)?)
+}
+
 fn apply_env(command: &mut Command, env: &Option<HashMap<String, String>>) {
     if let Some(env_map) = env {
         // Tests and CI inject a controlled PATH for the fake `cue` binary, so the command must
@@ -162,6 +176,39 @@ pub fn assert_cue_available(env: &Option<HashMap<String, String>>) -> Result<(),
     }
 }
 
+fn run_cue_vet(
+    schema_paths: &[PathBuf],
+    contract_path: &Path,
+    actual_path: &Path,
+    cwd: Option<&Path>,
+    env: &Option<HashMap<String, String>>,
+) -> Result<(), String> {
+    let mut command = cue_command(env, cwd, "vet");
+    for schema_path in schema_paths {
+        command.arg(schema_path);
+    }
+    command.arg(contract_path);
+    command.arg(actual_path);
+
+    match command.output() {
+        Ok(output) if output.status.success() => Ok(()),
+        Ok(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+            let code = output
+                .status
+                .code()
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "unknown".to_owned());
+            if stderr.is_empty() {
+                Err(format!("cue vet failed with exit code {code}"))
+            } else {
+                Err(format!("cue vet failed with exit code {code}: {stderr}"))
+            }
+        }
+        Err(error) => Err(error.to_string()),
+    }
+}
+
 pub fn validate_contract(options: ValidateContractOptions) -> Result<(), AppError> {
     if options.schema_paths.is_empty() {
         return Err(AppError::MissingSchemaPaths);
@@ -175,50 +222,92 @@ pub fn validate_contract(options: ValidateContractOptions) -> Result<(), AppErro
     assert_cue_available(&options.env)?;
 
     for actual_path in &actual_paths {
-        let mut command = cue_command(&options.env, options.cwd.as_deref(), "vet");
-        for schema_path in &options.schema_paths {
-            command.arg(schema_path);
-        }
-        command.arg(&options.contract_path);
-        command.arg(actual_path);
-
-        let status = command.status()?;
-        if !status.success() {
-            return Err(AppError::CueVetFailed(
-                status
-                    .code()
-                    .map(|code| code.to_string())
-                    .unwrap_or_else(|| "unknown".to_owned()),
-            ));
+        if let Err(error) = run_cue_vet(
+            &options.schema_paths,
+            &options.contract_path,
+            actual_path,
+            options.cwd.as_deref(),
+            &options.env,
+        ) {
+            return Err(AppError::CueVetFailed(error));
         }
     }
 
     Ok(())
 }
 
-pub fn validate_repo_workflow(options: ValidateRepoWorkflowOptions) -> Result<(), AppError> {
+pub fn write_validation_report(report: &ValidationReport, path: &Path) -> Result<(), AppError> {
+    fs::write(path, serde_json::to_string_pretty(report)?)?;
+    Ok(())
+}
+
+pub fn validate_repo_workflow(
+    options: ValidateRepoWorkflowOptions,
+) -> Result<ValidateRepoWorkflowResult, AppError> {
     let ValidateRepoWorkflowOptions {
         repo_root,
         workflow,
         actual_paths,
         declarations_dir,
+        report_file: _,
         cwd,
         env,
     } = options;
 
+    let actual_paths = resolve_actual_paths(&actual_paths)?;
     let workflow = match workflow {
         Some(workflow) if !workflow.trim().is_empty() => workflow,
-        _ => infer_workflow_from_actuals(&resolve_actual_paths(&actual_paths)?)?,
+        _ => infer_workflow_from_actuals(&actual_paths)?,
     };
 
     let declaration = find_declaration(&repo_root, &workflow, Some(&declarations_dir))?;
+    assert_cue_available(&env)?;
 
-    validate_contract(ValidateContractOptions {
-        schema_paths: vec![workflow_schema_path(), declaration_schema_path()],
-        contract_path: declaration.declaration_path,
-        actual_paths,
-        cwd,
-        env,
+    let mut actual_reports = Vec::new();
+    let mut failed = 0;
+
+    for actual_path in actual_paths {
+        let envelope = read_workflow_run(&actual_path)?;
+        let jobs = envelope
+            .run
+            .jobs
+            .into_iter()
+            .map(|(job_name, job)| (job_name, job.result))
+            .collect();
+        let cue_result = run_cue_vet(
+            &[workflow_schema_path(), declaration_schema_path()],
+            &declaration.declaration_path,
+            &actual_path,
+            cwd.as_deref(),
+            &env,
+        );
+        let (status, error) = match cue_result {
+            Ok(()) => (ValidationStatus::Passed, None),
+            Err(error) => {
+                failed += 1;
+                (ValidationStatus::Failed, Some(error))
+            }
+        };
+
+        actual_reports.push(ActualValidationReport {
+            actual_path,
+            workflow: envelope.run.workflow,
+            ref_name: envelope.run.ref_name,
+            status,
+            jobs,
+            error,
+        });
+    }
+
+    let report = ValidationReport {
+        workflow,
+        declaration_path: declaration.declaration_path,
+        actuals: actual_reports,
+    };
+
+    Ok(ValidateRepoWorkflowResult {
+        report,
+        failed_count: failed,
     })
 }
 
@@ -335,6 +424,7 @@ mod tests {
             workflow: Some("missing.yml".to_owned()),
             actual_paths: vec![actual],
             declarations_dir: PathBuf::from(".github/actionspec"),
+            report_file: None,
             cwd: None,
             env: None,
         })
@@ -414,15 +504,19 @@ mod tests {
             "#!/bin/sh\nif [ \"$1\" = \"version\" ]; then\n  exit 0\nfi\nif [ \"$1\" = \"vet\" ]; then\n  exit 0\nfi\nexit 1\n",
         );
 
-        validate_repo_workflow(ValidateRepoWorkflowOptions {
+        let result = validate_repo_workflow(ValidateRepoWorkflowOptions {
             repo_root: temp.path().to_path_buf(),
             workflow: None,
             actual_paths: vec![actual],
             declarations_dir: PathBuf::from(".github/actionspec"),
+            report_file: None,
             cwd: None,
             env: Some(env),
         })
         .expect("validation should succeed");
+
+        assert_eq!(result.failed_count, 0);
+        assert_eq!(result.report.actuals.len(), 1);
     }
 
     #[test]
@@ -446,6 +540,7 @@ mod tests {
             workflow: None,
             actual_paths: vec![first, second],
             declarations_dir: PathBuf::from(".github/actionspec"),
+            report_file: None,
             cwd: None,
             env: None,
         })
@@ -456,6 +551,62 @@ mod tests {
             .contains("Could not infer a single workflow from the provided actual payloads"));
         assert!(error.to_string().contains("build.yml"));
         assert!(error.to_string().contains("deploy.yml"));
+    }
+
+    #[test]
+    fn validate_repo_workflow_collects_failures_in_report() {
+        let temp = tempdir().expect("temp dir should be created");
+        let declaration_dir = temp.path().join(".github/actionspec/ci");
+        fs::create_dir_all(&declaration_dir).expect("declaration dir should be created");
+        fs::write(
+            declaration_dir.join("main.cue"),
+            "package actionspec\n\nworkflow: \"ci.yml\"\n\nrun: #Declaration.run & {\n  workflow: workflow\n  ref: \"main\"\n  jobs: {\n    build: {\n      result: \"success\"\n    }\n  }\n}\n",
+        )
+        .expect("declaration should be written");
+
+        let passing = temp.path().join("passing.json");
+        let failing = temp.path().join("failing.json");
+        fs::write(
+            &passing,
+            "{\"run\":{\"workflow\":\"ci.yml\",\"ref\":\"main\",\"jobs\":{\"build\":{\"result\":\"success\"}}}}",
+        )
+        .expect("passing actual should be written");
+        fs::write(
+            &failing,
+            "{\"run\":{\"workflow\":\"ci.yml\",\"ref\":\"main\",\"jobs\":{\"build\":{\"result\":\"skipped\"}}}}",
+        )
+        .expect("failing actual should be written");
+
+        let env = install_fake_cue(
+            temp.path(),
+            "#!/bin/sh\nif [ \"$1\" = \"version\" ]; then\n  exit 0\nfi\nif [ \"$1\" = \"vet\" ]; then\n  last=\"\"\n  for arg in \"$@\"; do\n    last=\"$arg\"\n  done\n  case \"$last\" in\n    *passing.json) exit 0 ;;\n    *failing.json) echo \"build should not be skipped\" >&2; exit 9 ;;\n  esac\nfi\nexit 1\n",
+        );
+
+        let result = validate_repo_workflow(ValidateRepoWorkflowOptions {
+            repo_root: temp.path().to_path_buf(),
+            workflow: Some("ci.yml".to_owned()),
+            actual_paths: vec![passing.clone(), failing.clone()],
+            declarations_dir: PathBuf::from(".github/actionspec"),
+            report_file: None,
+            cwd: None,
+            env: Some(env),
+        })
+        .expect("report should be produced");
+
+        assert_eq!(result.failed_count, 1);
+        assert_eq!(result.report.actuals.len(), 2);
+        assert!(result
+            .report
+            .actuals
+            .iter()
+            .any(|actual| actual.actual_path == passing && actual.error.is_none()));
+        assert!(result.report.actuals.iter().any(|actual| {
+            actual.actual_path == failing
+                && actual
+                    .error
+                    .as_ref()
+                    .is_some_and(|error| error.contains("build should not be skipped"))
+        }));
     }
 
     #[test]

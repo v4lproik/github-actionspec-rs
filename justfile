@@ -94,5 +94,13 @@ discover repo=".":
 validate-repo repo workflow actual:
   {{host-runner}} cargo run -- validate-repo --repo {{repo}} --workflow {{workflow}} --actual {{actual}}
 
+validate-repo-report repo workflow actual report:
+  just docker-build
+  {{docker-runner}} cargo run -- validate-repo --repo {{repo}} --workflow {{workflow}} --actual {{actual}} --report-file {{report}}
+
+dashboard-report current output baseline="":
+  just docker-build
+  if [ -n "{{baseline}}" ]; then {{docker-runner}} cargo run -- dashboard --current {{current}} --baseline {{baseline}} --output {{output}}; else {{docker-runner}} cargo run -- dashboard --current {{current}} --output {{output}}; fi
+
 validate schema contract actual:
   {{host-runner}} cargo run -- validate --schema {{schema}} --contract {{contract}} --actual {{actual}}

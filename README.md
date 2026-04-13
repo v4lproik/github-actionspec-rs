@@ -42,13 +42,16 @@ just discover
 just coverage-summary
 just pr-create
 just validate-repo /path/to/repo ci.yml /path/to/actual.json
+just validate-repo-report /path/to/repo ci.yml /path/to/payloads target/actionspec/report.json
+just dashboard-report target/actionspec/report.json target/actionspec/dashboard.md
 ```
 
 Commands:
 
 - `github-actionspec discover --repo <path>`
 - `github-actionspec validate --schema <file> --schema <file> --contract <file> --actual <file-or-glob>`
-- `github-actionspec validate-repo --repo <path> [--workflow <name>] --actual <file-dir-or-glob>`
+- `github-actionspec validate-repo --repo <path> [--workflow <name>] --actual <file-dir-or-glob> [--report-file <report.json>]`
+- `github-actionspec dashboard --current <report.json> [--baseline <report.json>] --output <dashboard.md>`
 
 ## GitHub Action
 
@@ -88,6 +91,14 @@ Inputs:
 - `workflow`: workflow file name to validate. Optional when the provided payloads all belong to the same workflow
 - `actual`: path to one normalized workflow run JSON payload, a directory containing JSON payloads, a glob pattern, or a newline-separated list of payloads and glob patterns. Defaults to `.github/actionspec-artifacts`
 - `declarations-dir`: custom declarations directory. Defaults to `.github/actionspec`
+- `report-file`: path where the action writes the JSON validation report. Defaults to `/github/runner_temp/github-actionspec-dashboard/current/validation-report.json`
+- `baseline-report`: optional path to a previous JSON validation report used to compute matrix diffs
+- `dashboard-file`: path where the action writes the markdown matrix dashboard. Defaults to `/github/runner_temp/github-actionspec-dashboard/current/dashboard.md`
+- `write-summary`: whether to append the matrix dashboard to the job summary. Defaults to `true`
+- `comment-pr`: whether to upsert the matrix dashboard as a PR comment. Defaults to `false`
+- `comment-title`: title used for the PR comment. Defaults to `Workflow Matrix Dashboard`
+- `comment-tag`: stable marker used to find and update the existing PR comment. Defaults to `github-actionspec-matrix`
+- `github-token`: token used for PR comment upserts when `comment-pr` is enabled
 
 Examples:
 
@@ -120,6 +131,42 @@ Examples:
     repo: .
     workflow: ci.yml
     actual: .github/actionspec-artifacts/**/*.json
+
+- name: Validate, diff against a previous report, and comment on the PR
+  id: actionspec
+  uses: v4lproik/github-actionspec-rs@main
+  with:
+    repo: .
+    workflow: ci.yml
+    actual: .github/actionspec-artifacts/**/*.json
+    report-file: ${{ runner.temp }}/github-actionspec-dashboard/current/validation-report.json
+    baseline-report: ${{ runner.temp }}/github-actionspec-dashboard/baseline/validation-report.json
+    dashboard-file: ${{ runner.temp }}/github-actionspec-dashboard/current/dashboard.md
+    comment-pr: true
+    github-token: ${{ github.token }}
+
+- name: Upload the matrix artifact
+  uses: actions/upload-artifact@v4
+  with:
+    name: ci-matrix-dashboard
+    path: |
+      ${{ steps.actionspec.outputs.report-path }}
+      ${{ steps.actionspec.outputs.dashboard-path }}
+```
+
+To show the difference between the current and previous matrix, download the earlier report artifact before the action step and pass its report JSON through `baseline-report`. The action updates a single PR comment identified by `comment-tag`, so the discussion stays in one place instead of growing a new comment on every push.
+
+Example:
+
+```yaml
+- name: Download previous matrix artifact
+  uses: dawidd6/action-download-artifact@v9
+  with:
+    workflow: ci.yml
+    branch: main
+    name: ci-matrix-dashboard
+    path: ${{ runner.temp }}/github-actionspec-dashboard/baseline
+    if_no_artifact_found: warn
 ```
 
 ## Coverage
@@ -153,9 +200,12 @@ GitHub Actions must call `just`, not raw `cargo`, `gh`, or `mise` command sequen
 - Build: `just build`
 - Lint: `just lint`
 - Test: `just test`
+- Matrix report: `just validate-repo-report . ci.yml tests/fixtures/ci target/actionspec/validation-report.json`
+- Matrix dashboard: `just dashboard-report target/actionspec/validation-report.json target/actionspec/dashboard.md`
 - Coverage upload: `just coverage-ci`
 - Local full pass: `just ci`
 - The remote action integration check now lives inside the main `CI` workflow and validates the published `v4lproik/github-actionspec-rs@main` action reference end to end against this repository's own `ci.yml` fixtures on pushes to `main`.
+- The `tests` job publishes a `ci-matrix-dashboard` artifact with the current validation report and a markdown matrix. On pull requests, the workflow also updates a single PR comment with that matrix and diffs it against the latest available baseline artifact.
 
 ## Docker Parity
 

@@ -45,4 +45,5 @@
 ## Validation
 - For code changes, run `just test`.
 - For CLI or discovery changes, also run `just discover`.
+- Before pushing a branch, make sure `just lint`, `just build`, and `just test` pass.
 - The default `just discover` target points to the current repository root.

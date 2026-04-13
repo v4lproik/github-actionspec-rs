@@ -1,6 +1,7 @@
 mod support;
 
 use assert_cmd::Command;
+use github_actionspec_rs::types::ValidationReport;
 use predicates::prelude::*;
 use tempfile::tempdir;
 
@@ -145,4 +146,52 @@ fn discovers_repo_contracts_through_cli() {
         .stdout(predicate::str::contains(
             ".github/actionspec/release/default.cue",
         ));
+}
+
+#[test]
+fn writes_report_file_before_failing_validation() {
+    let repo = tempdir().unwrap();
+    support::write_declaration(repo.path(), ".github/actionspec/ci/main.cue", "ci.yml");
+    let passing = repo.path().join("ci-main-success.json");
+    let failing = repo.path().join("ci-main-skipped.json");
+    std::fs::write(
+        &passing,
+        "{\"run\":{\"workflow\":\"ci.yml\",\"ref\":\"main\",\"jobs\":{\"build\":{\"result\":\"success\"}}}}",
+    )
+    .unwrap();
+    std::fs::write(
+        &failing,
+        "{\"run\":{\"workflow\":\"ci.yml\",\"ref\":\"main\",\"jobs\":{\"build\":{\"result\":\"skipped\"}}}}",
+    )
+    .unwrap();
+    let report = repo.path().join("validation-report.json");
+    let env = support::install_fake_cue_script(
+        repo.path(),
+        "#!/bin/sh\nif [ \"$1\" = \"version\" ]; then\n  exit 0\nfi\nif [ \"$1\" = \"vet\" ]; then\n  last=\"\"\n  for arg in \"$@\"; do\n    last=\"$arg\"\n  done\n  case \"$last\" in\n    *ci-main-success.json) exit 0 ;;\n    *ci-main-skipped.json) echo \"build should not be skipped\" >&2; exit 9 ;;\n  esac\nfi\nexit 1\n",
+    );
+
+    let mut command = Command::cargo_bin("github-actionspec").unwrap();
+    command
+        .envs(env)
+        .arg("validate-repo")
+        .arg("--repo")
+        .arg(repo.path())
+        .arg("--workflow")
+        .arg("ci.yml")
+        .arg("--actual")
+        .arg(&passing)
+        .arg("--actual")
+        .arg(&failing)
+        .arg("--report-file")
+        .arg(&report);
+
+    command.assert().failure().stderr(predicate::str::contains(
+        "Validation failed for 1 of 2 payloads.",
+    ));
+
+    let report: ValidationReport =
+        serde_json::from_str(&std::fs::read_to_string(report).unwrap()).unwrap();
+    assert_eq!(report.actuals.len(), 2);
+    assert!(report.actuals.iter().any(|actual| actual.error.as_deref()
+        == Some("cue vet failed with exit code 9: build should not be skipped")));
 }
