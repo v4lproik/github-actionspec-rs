@@ -175,13 +175,83 @@ jobs:
           fail_ci_if_error: true
           files: ./target/llvm-cov/lcov.info
 
+  remote-action-integration:
+    if: ${{ !cancelled() && needs.detect-changes.outputs.run_ci == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    name: Remote Action Integration
+    runs-on: ubuntu-latest
+    needs:
+      - detect-changes
+      - tests
+    steps:
+      - name: Checkout repository fixtures
+        uses: actions/checkout@v6
+      - name: Validate passing fixture directory
+        uses: v4lproik/github-actionspec-rs@main
+        with:
+          repo: tests/fixtures/repos/factmachine-monorepo
+          workflow: build-infrastructure.yml
+          actual: tests/fixtures/build-infrastructure/passing
+      - name: Validate passing fixture list
+        uses: v4lproik/github-actionspec-rs@main
+        with:
+          repo: tests/fixtures/repos/factmachine-monorepo
+          workflow: build-infrastructure.yml
+          actual: |
+            tests/fixtures/build-infrastructure/staging-success.json
+            tests/fixtures/build-infrastructure/staging-tests-failed-no-promote.json
+      - name: Reject missing validator runtime tag
+        id: missing-validator-tag
+        continue-on-error: true
+        uses: v4lproik/github-actionspec-rs@main
+        with:
+          repo: tests/fixtures/repos/factmachine-monorepo
+          workflow: build-infrastructure.yml
+          actual: tests/fixtures/build-infrastructure/staging-missing-validator-tag.json
+      - name: Reject inconsistent test safeguard
+        id: inconsistent-safeguard
+        continue-on-error: true
+        uses: v4lproik/github-actionspec-rs@main
+        with:
+          repo: tests/fixtures/repos/factmachine-monorepo
+          workflow: build-infrastructure.yml
+          actual: tests/fixtures/build-infrastructure/staging-tests-passed-but-failed-jobs.json
+      - name: Validate expected plugin outcomes
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ steps.missing-validator-tag.outcome }}" != "failure" ]]; then
+            echo "::error::The missing validator runtime tag fixture should fail validation."
+            exit 1
+          fi
+
+          if [[ "${{ steps.inconsistent-safeguard.outcome }}" != "failure" ]]; then
+            echo "::error::The inconsistent test safeguard fixture should fail validation."
+            exit 1
+          fi
+      - name: Summarize remote action integration
+        if: ${{ always() }}
+        run: |
+          cat <<'EOF' >> "${GITHUB_STEP_SUMMARY}"
+          ## Remote Action Integration
+          - Action reference: `v4lproik/github-actionspec-rs@main`
+          - Passing directory: `tests/fixtures/build-infrastructure/passing`
+          - Passing file list:
+            - `staging-success.json`
+            - `staging-tests-failed-no-promote.json`
+          - Expected failing fixtures:
+            - `staging-missing-validator-tag.json`
+            - `staging-tests-passed-but-failed-jobs.json`
+          EOF
+
   docker:
-    if: ${{ !cancelled() && needs.detect-changes.outputs.run_ci == 'true' }}
+    if: ${{ !cancelled() && needs.detect-changes.outputs.run_ci == 'true' && needs.tests.result == 'success' && (needs.remote-action-integration.result == 'success' || needs.remote-action-integration.result == 'skipped') }}
     name: Docker
     runs-on: ubuntu-latest
     needs:
       - detect-changes
       - tests
+      - remote-action-integration
     steps:
       - name: Checkout
         uses: actions/checkout@v6
