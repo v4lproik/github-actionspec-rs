@@ -1,0 +1,95 @@
+{
+  "run": {
+    "workflow": "build-infrastructure.yml",
+    "ref": "staging",
+    "inputs": {
+      "current_env": "staging",
+      "target_env": "staging"
+    },
+    "jobs": {
+      "bootstrap": {
+        "result": "success",
+        "outputs": {
+          "current_env": "staging",
+          "target_env": "staging",
+          "force_trigger": "false",
+          "backend": "true",
+          "frontend": "false",
+          "admin": "false",
+          "admin-backend": "false",
+          "worker": "false",
+          "indexer": "false",
+          "monitor": "false",
+          "listener": "false",
+          "contract": "false",
+          "packages": "true",
+          "packages_non_contract": "true"
+        }
+      },
+      "lint-gate": {
+        "result": "success"
+      },
+      "build-ts-services": {
+        "result": "success"
+      },
+      "build-contract": {
+        "result": "skipped"
+      },
+      "summarize-build-ts-services": {
+        "result": "success",
+        "outputs": {
+          "backend-runtime-tag": "bk-backend-staging-a1b2c3",
+          "frontend-runtime-tag": "bk-frontend-staging-a1b2c3",
+          "admin-runtime-tag": "bk-admin-staging-a1b2c3",
+          "admin-backend-runtime-tag": "bk-admin-backend-staging-a1b2c3",
+          "worker-runtime-tag": "bk-worker-staging-a1b2c3",
+          "indexer-runtime-tag": "bk-indexer-staging-a1b2c3",
+          "monitor-runtime-tag": "bk-monitor-staging-a1b2c3",
+          "listener-runtime-tag": "bk-listener-staging-a1b2c3"
+        }
+      },
+      "test-ts-services": {
+        "result": "success"
+      },
+      "test-ts-packages": {
+        "result": "success"
+      },
+      "report-coverage": {
+        "result": "success",
+        "outputs": {
+          "tests_passed": "true"
+        }
+      },
+      "migrate-db": {
+        "result": "success"
+      },
+      "promote-ts-services": {
+        "result": "success"
+      },
+      "summarize-promote-ts-services": {
+        "result": "success"
+      },
+      "deploy-backend": {
+        "result": "skipped"
+      },
+      "deploy-frontend": {
+        "result": "skipped"
+      },
+      "deploy-admin": {
+        "result": "skipped"
+      },
+      "deploy-worker": {
+        "result": "skipped"
+      },
+      "deploy-indexer": {
+        "result": "skipped"
+      },
+      "deploy-monitor": {
+        "result": "skipped"
+      },
+      "deploy-admin-backend": {
+        "result": "skipped"
+      }
+    }
+  }
+}

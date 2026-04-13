@@ -22,8 +22,14 @@ pub enum AppError {
     #[error("At least one schema path is required.")]
     MissingSchemaPaths,
 
+    #[error("At least one actual path is required.")]
+    MissingActualPaths,
+
     #[error("Missing readable file: {0}")]
     MissingReadableFile(PathBuf),
+
+    #[error("No readable JSON files were found under directory: {0}")]
+    NoActualFilesFound(PathBuf),
 
     #[error(transparent)]
     Io(#[from] std::io::Error),

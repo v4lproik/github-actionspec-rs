@@ -17,8 +17,8 @@ pub enum Command {
         schema: Vec<PathBuf>,
         #[arg(long)]
         contract: PathBuf,
-        #[arg(long)]
-        actual: PathBuf,
+        #[arg(long, required = true)]
+        actual: Vec<PathBuf>,
     },
     Discover {
         #[arg(long)]
@@ -31,8 +31,8 @@ pub enum Command {
         repo: PathBuf,
         #[arg(long)]
         workflow: String,
-        #[arg(long)]
-        actual: PathBuf,
+        #[arg(long, required = true)]
+        actual: Vec<PathBuf>,
         #[arg(long = "declarations-dir", default_value = ".github/actionspec")]
         declarations_dir: PathBuf,
     },
@@ -68,7 +68,40 @@ mod tests {
                 assert_eq!(schema[0], PathBuf::from("schema/workflow_run.cue"));
                 assert_eq!(schema[1], PathBuf::from("schema/declaration.cue"));
                 assert_eq!(contract, PathBuf::from("contract.cue"));
-                assert_eq!(actual, PathBuf::from("actual.json"));
+                assert_eq!(actual, vec![PathBuf::from("actual.json")]);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_validate_command_with_multiple_actuals() {
+        let cli = Cli::try_parse_from([
+            "github-actionspec",
+            "validate",
+            "--schema",
+            "schema/workflow_run.cue",
+            "--contract",
+            "contract.cue",
+            "--actual",
+            "actual-one.json",
+            "--actual",
+            "actual-two.json",
+        ])
+        .expect("cli should parse");
+
+        match cli.command {
+            Command::Validate {
+                actual, contract, ..
+            } => {
+                assert_eq!(contract, PathBuf::from("contract.cue"));
+                assert_eq!(
+                    actual,
+                    vec![
+                        PathBuf::from("actual-one.json"),
+                        PathBuf::from("actual-two.json")
+                    ]
+                );
             }
             other => panic!("unexpected command: {other:?}"),
         }
@@ -114,7 +147,7 @@ mod tests {
             } => {
                 assert_eq!(repo, PathBuf::from("/tmp/repo"));
                 assert_eq!(workflow, "build-infrastructure.yml");
-                assert_eq!(actual, PathBuf::from("actual.json"));
+                assert_eq!(actual, vec![PathBuf::from("actual.json")]);
                 assert_eq!(declarations_dir, PathBuf::from(".github/actionspec"));
             }
             other => panic!("unexpected command: {other:?}"),

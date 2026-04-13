@@ -8,6 +8,8 @@ Rust implementation of the GitHub Actions workflow contract validator.
 
 It keeps CUE as the intermediate language and uses the `cue` CLI for validation.
 
+Because the contract layer is expressed in CUE rather than ad hoc shell logic, the validation rules are usually easier for both humans and AI-assisted tooling to inspect, explain, and extend. This should be read as a practical ergonomics benefit, not as a benchmark claim that CUE is universally "better for AI".
+
 Project site: https://v4lproik.github.io/github-actionspec-rs/
 
 ## Tooling
@@ -48,6 +50,55 @@ Commands:
 - `github-actionspec validate --schema <file> --schema <file> --contract <file> --actual <file>`
 - `github-actionspec validate-repo --repo <path> --workflow <name> --actual <file>`
 
+## GitHub Action
+
+This repository also exposes a Docker-based GitHub Action for the common `validate-repo` flow. The action runs the bundled `github-actionspec` binary together with the bundled `cue` runtime, so the calling workflow only needs a checked out repository and a normalized JSON payload.
+
+```yaml
+- uses: actions/checkout@v6
+
+- name: Validate build-infrastructure contract
+  uses: v4lproik/github-actionspec-rs@main
+  with:
+    repo: .
+    workflow: build-infrastructure.yml
+    actual: .github/actionspec-artifacts/build-infrastructure.json
+```
+
+Inputs:
+
+- `repo`: target repository root containing `.github/actionspec` declarations. Defaults to `.`
+- `workflow`: workflow file name to validate
+- `actual`: path to one normalized workflow run JSON payload, a directory containing JSON payloads, or a newline-separated list of payload paths
+- `declarations-dir`: custom declarations directory. Defaults to `.github/actionspec`
+
+Examples:
+
+```yaml
+- name: Validate one payload
+  uses: v4lproik/github-actionspec-rs@main
+  with:
+    repo: .
+    workflow: build-infrastructure.yml
+    actual: .github/actionspec-artifacts/build-infrastructure.json
+
+- name: Validate a whole folder of payloads
+  uses: v4lproik/github-actionspec-rs@main
+  with:
+    repo: .
+    workflow: build-infrastructure.yml
+    actual: .github/actionspec-artifacts/passing
+
+- name: Validate an explicit list of payloads
+  uses: v4lproik/github-actionspec-rs@main
+  with:
+    repo: .
+    workflow: build-infrastructure.yml
+    actual: |
+      .github/actionspec-artifacts/staging.json
+      .github/actionspec-artifacts/production.json
+```
+
 ## Coverage
 
 The target for this repo is to stay close to `90%` test coverage.
@@ -74,13 +125,14 @@ This emits `target/llvm-cov/lcov.info`, which the repository workflow uploads to
 GitHub Actions must call `just`, not raw `cargo`, `gh`, or `mise` command sequences.
 
 - The workflow starts with a `detect-changes` job powered by `dorny/paths-filter` and filter rules stored in `.github/filters/changes.yml`.
-- Build, lint, test, coverage, runtime verification, and publish only run when `core` or `infra` changed.
+- Build, lint, test, local action smoke, coverage, runtime verification, and publish only run when `core` or `infra` changed.
 - The workflow can also be started manually through `workflow_dispatch`; manual runs force the full CI path even if no matching file changes are present.
 - Build: `just build`
 - Lint: `just lint`
 - Test: `just test`
 - Coverage upload: `just coverage-ci`
 - Local full pass: `just ci`
+- `CI Test` is a separate workflow that checks out the fixture repository data from this repo and validates the published `v4lproik/github-actionspec-rs@main` action reference end to end.
 
 ## Docker Parity
 

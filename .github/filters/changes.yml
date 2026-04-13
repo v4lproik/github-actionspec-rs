@@ -7,6 +7,7 @@ core:
 
 infra:
   - '.github/**'
+  - 'action.yml'
   - 'scripts/docker/**'
   - 'Dockerfile'
   - 'docker-bake.hcl'

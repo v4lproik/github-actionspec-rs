@@ -13,7 +13,7 @@ fn validates_when_cue_vet_succeeds() {
     let result = validate_contract(ValidateContractOptions {
         schema_paths: vec![schema],
         contract_path: contract,
-        actual_path: actual,
+        actual_paths: vec![actual],
         cwd: Some(temp.path().to_path_buf()),
         env: Some(env),
     });
@@ -42,6 +42,30 @@ fn validates_through_cli() {
 }
 
 #[test]
+fn validates_multiple_actuals_through_cli() {
+    let temp = tempdir().unwrap();
+    let (schema, contract, actual) = support::write_validation_fixture(temp.path(), "demo");
+    let second_actual = temp.path().join("actual-two.json");
+    support::write_actual(&second_actual, "demo");
+    let env = support::install_fake_cue(&temp, "success");
+
+    let mut command = Command::cargo_bin("github-actionspec").unwrap();
+    command
+        .envs(env)
+        .arg("validate")
+        .arg("--schema")
+        .arg(&schema)
+        .arg("--contract")
+        .arg(&contract)
+        .arg("--actual")
+        .arg(&actual)
+        .arg("--actual")
+        .arg(&second_actual);
+
+    command.assert().success();
+}
+
+#[test]
 fn fails_when_cue_vet_fails() {
     let temp = tempdir().unwrap();
     let (schema, contract, actual) = support::write_validation_fixture(temp.path(), "demo");
@@ -50,7 +74,7 @@ fn fails_when_cue_vet_fails() {
     let error = validate_contract(ValidateContractOptions {
         schema_paths: vec![schema],
         contract_path: contract,
-        actual_path: actual,
+        actual_paths: vec![actual],
         cwd: Some(temp.path().to_path_buf()),
         env: Some(env),
     })

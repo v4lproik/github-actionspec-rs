@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -10,7 +11,7 @@ use crate::errors::AppError;
 pub struct ValidateContractOptions {
     pub schema_paths: Vec<PathBuf>,
     pub contract_path: PathBuf,
-    pub actual_path: PathBuf,
+    pub actual_paths: Vec<PathBuf>,
     pub cwd: Option<PathBuf>,
     pub env: Option<HashMap<String, String>>,
 }
@@ -19,7 +20,7 @@ pub struct ValidateContractOptions {
 pub struct ValidateRepoWorkflowOptions {
     pub repo_root: PathBuf,
     pub workflow: String,
-    pub actual_path: PathBuf,
+    pub actual_paths: Vec<PathBuf>,
     pub declarations_dir: PathBuf,
     pub cwd: Option<PathBuf>,
     pub env: Option<HashMap<String, String>>,
@@ -31,6 +32,46 @@ fn assert_readable(path: &Path) -> Result<(), AppError> {
     }
 
     Ok(())
+}
+
+fn collect_directory_actuals(path: &Path) -> Result<Vec<PathBuf>, AppError> {
+    let mut actual_paths = fs::read_dir(path)?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|entry| entry.is_file())
+        .filter(|entry| entry.extension().and_then(|value| value.to_str()) == Some("json"))
+        .collect::<Vec<_>>();
+
+    actual_paths.sort();
+
+    if actual_paths.is_empty() {
+        return Err(AppError::NoActualFilesFound(path.to_path_buf()));
+    }
+
+    Ok(actual_paths)
+}
+
+fn resolve_actual_paths(paths: &[PathBuf]) -> Result<Vec<PathBuf>, AppError> {
+    if paths.is_empty() {
+        return Err(AppError::MissingActualPaths);
+    }
+
+    let mut resolved_paths = Vec::new();
+    for path in paths {
+        if path.is_dir() {
+            resolved_paths.extend(collect_directory_actuals(path)?);
+            continue;
+        }
+
+        assert_readable(path)?;
+        resolved_paths.push(path.to_path_buf());
+    }
+
+    if resolved_paths.is_empty() {
+        return Err(AppError::MissingActualPaths);
+    }
+
+    Ok(resolved_paths)
 }
 
 fn apply_env(command: &mut Command, env: &Option<HashMap<String, String>>) {
@@ -80,27 +121,29 @@ pub fn validate_contract(options: ValidateContractOptions) -> Result<(), AppErro
         assert_readable(schema_path)?;
     }
     assert_readable(&options.contract_path)?;
-    assert_readable(&options.actual_path)?;
+    let actual_paths = resolve_actual_paths(&options.actual_paths)?;
     assert_cue_available(&options.env)?;
 
-    let mut command = cue_command(&options.env, options.cwd.as_deref(), "vet");
-    for schema_path in &options.schema_paths {
-        command.arg(schema_path);
-    }
-    command.arg(&options.contract_path);
-    command.arg(&options.actual_path);
+    for actual_path in &actual_paths {
+        let mut command = cue_command(&options.env, options.cwd.as_deref(), "vet");
+        for schema_path in &options.schema_paths {
+            command.arg(schema_path);
+        }
+        command.arg(&options.contract_path);
+        command.arg(actual_path);
 
-    let status = command.status()?;
-    if status.success() {
-        return Ok(());
+        let status = command.status()?;
+        if !status.success() {
+            return Err(AppError::CueVetFailed(
+                status
+                    .code()
+                    .map(|code| code.to_string())
+                    .unwrap_or_else(|| "unknown".to_owned()),
+            ));
+        }
     }
 
-    Err(AppError::CueVetFailed(
-        status
-            .code()
-            .map(|code| code.to_string())
-            .unwrap_or_else(|| "unknown".to_owned()),
-    ))
+    Ok(())
 }
 
 pub fn validate_repo_workflow(options: ValidateRepoWorkflowOptions) -> Result<(), AppError> {
@@ -113,7 +156,7 @@ pub fn validate_repo_workflow(options: ValidateRepoWorkflowOptions) -> Result<()
     validate_contract(ValidateContractOptions {
         schema_paths: vec![workflow_schema_path(), declaration_schema_path()],
         contract_path: declaration.declaration_path,
-        actual_path: options.actual_path,
+        actual_paths: options.actual_paths,
         cwd: options.cwd,
         env: options.env,
     })
@@ -168,7 +211,7 @@ mod tests {
         let error = validate_contract(ValidateContractOptions {
             schema_paths: vec![],
             contract_path: PathBuf::from("contract.cue"),
-            actual_path: PathBuf::from("actual.json"),
+            actual_paths: vec![PathBuf::from("actual.json")],
             cwd: None,
             env: None,
         })
@@ -187,7 +230,7 @@ mod tests {
         let error = validate_contract(ValidateContractOptions {
             schema_paths: vec![temp.path().join("missing-schema.cue")],
             contract_path: contract,
-            actual_path: actual,
+            actual_paths: vec![actual],
             cwd: None,
             env: None,
         })
@@ -230,7 +273,7 @@ mod tests {
         let error = validate_repo_workflow(ValidateRepoWorkflowOptions {
             repo_root: temp.path().to_path_buf(),
             workflow: "missing.yml".to_owned(),
-            actual_path: actual,
+            actual_paths: vec![actual],
             declarations_dir: PathBuf::from(".github/actionspec"),
             cwd: None,
             env: None,
@@ -240,5 +283,75 @@ mod tests {
         assert!(error
             .to_string()
             .contains("No declaration found for workflow \"missing.yml\""));
+    }
+
+    #[test]
+    fn validate_contract_runs_once_per_actual_file() {
+        let temp = tempdir().expect("temp dir should be created");
+        let schema = temp.path().join("schema.cue");
+        let contract = temp.path().join("contract.cue");
+        let actual_dir = temp.path().join("actuals");
+        let actual_one = actual_dir.join("actual-one.json");
+        let actual_two = actual_dir.join("actual-two.json");
+        fs::create_dir_all(&actual_dir).expect("actual dir should be created");
+        fs::write(
+            &schema,
+            "package actionspec\n#WorkflowRun: {workflow: string, jobs: [string]: {result: string}}\n",
+        )
+        .expect("schema should be written");
+        fs::write(
+            &contract,
+            "package actionspec\nrun: #WorkflowRun & {workflow: \"demo\", jobs: {build: {result: \"success\"}}}\n",
+        )
+        .expect("contract should be written");
+        fs::write(&actual_one, "{\"run\":{\"workflow\":\"demo\",\"jobs\":{\"build\":{\"result\":\"success\"}}}}")
+            .expect("actual one should be written");
+        fs::write(&actual_two, "{\"run\":{\"workflow\":\"demo\",\"jobs\":{\"build\":{\"result\":\"success\"}}}}")
+            .expect("actual two should be written");
+
+        let env = install_fake_cue(
+            temp.path(),
+            "#!/bin/sh\nif [ \"$1\" = \"version\" ]; then\n  exit 0\nfi\nif [ \"$1\" = \"vet\" ]; then\n  json_count=0\n  shift\n  for arg in \"$@\"; do\n    case \"$arg\" in\n      *.json) json_count=$((json_count + 1));;\n    esac\n  done\n  if [ \"$json_count\" -ne 1 ]; then\n    exit 7\n  fi\n  exit 0\nfi\nexit 1\n",
+        );
+
+        let result = validate_contract(ValidateContractOptions {
+            schema_paths: vec![schema],
+            contract_path: contract,
+            actual_paths: vec![actual_dir],
+            cwd: Some(temp.path().to_path_buf()),
+            env: Some(env),
+        });
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn validate_contract_errors_when_actual_directory_has_no_json_files() {
+        let temp = tempdir().expect("temp dir should be created");
+        let contract = temp.path().join("contract.cue");
+        let schema = temp.path().join("schema.cue");
+        let empty_dir = temp.path().join("actuals");
+        fs::create_dir_all(&empty_dir).expect("empty dir should be created");
+        fs::write(
+            &contract,
+            "package actionspec\nrun: #WorkflowRun & {workflow: \"demo\", jobs: {build: {result: \"success\"}}}\n",
+        )
+        .expect("contract should be written");
+        fs::write(
+            &schema,
+            "package actionspec\n#WorkflowRun: {workflow: string, jobs: [string]: {result: string}}\n",
+        )
+        .expect("schema should be written");
+
+        let error = validate_contract(ValidateContractOptions {
+            schema_paths: vec![schema],
+            contract_path: contract,
+            actual_paths: vec![empty_dir.clone()],
+            cwd: None,
+            env: Some(install_fake_cue(temp.path(), "success")),
+        })
+        .expect_err("validation should fail");
+
+        assert!(error.to_string().contains(&empty_dir.display().to_string()));
     }
 }

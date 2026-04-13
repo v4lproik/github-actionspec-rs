@@ -1,0 +1,30 @@
+name: github-actionspec validate-repo
+description: Validate a normalized GitHub Actions workflow run against a repository-owned CUE declaration.
+inputs:
+  repo:
+    description: Path to the target repository containing .github/actionspec declarations.
+    required: false
+    default: .
+  workflow:
+    description: Workflow file name to validate, for example build-infrastructure.yml.
+    required: true
+  actual:
+    description: Path to a normalized workflow run JSON payload, a directory of JSON payloads, or a newline-separated list of payload paths.
+    required: true
+  declarations-dir:
+    description: Path to the declarations directory inside the target repository.
+    required: false
+    default: .github/actionspec
+runs:
+  using: docker
+  image: Dockerfile
+  args:
+    - validate-repo
+    - --repo
+    - ${{ inputs.repo }}
+    - --workflow
+    - ${{ inputs.workflow }}
+    - --actual
+    - ${{ inputs.actual }}
+    - --declarations-dir
+    - ${{ inputs.declarations-dir }}
