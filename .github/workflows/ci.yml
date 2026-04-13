@@ -47,7 +47,7 @@ jobs:
       - name: Classify changed files
         id: filter
         if: ${{ github.event_name != 'workflow_dispatch' }}
-        uses: dorny/paths-filter@v3.0.2
+        uses: dorny/paths-filter@v4.0.1
         with:
           base: ${{ github.ref }}
           filters: .github/filters/changes.yml
