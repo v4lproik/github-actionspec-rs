@@ -60,6 +60,7 @@ pre {
   position: relative;
   color: var(--ink-inverse);
   background:
+    radial-gradient(circle at 52% 30%, rgba(255, 155, 84, 0.14), transparent 18%),
     radial-gradient(circle at 18% 14%, rgba(121, 231, 220, 0.14), transparent 24%),
     radial-gradient(circle at 82% 10%, rgba(122, 182, 255, 0.14), transparent 20%),
     linear-gradient(180deg, var(--hero-top) 0%, #171727 36%, var(--hero-bottom) 100%);
@@ -158,13 +159,15 @@ pre {
   gap: 0.65rem;
   margin-bottom: 1rem;
   padding: 0.42rem 0.7rem 0.42rem 0.5rem;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 155, 84, 0.22);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.04);
+  background: linear-gradient(180deg, rgba(255, 155, 84, 0.12), rgba(255, 255, 255, 0.04));
   color: rgba(245, 247, 251, 0.82);
   font-size: 0.74rem;
   letter-spacing: 0.02em;
-  box-shadow: inset 0 0 0 1px rgba(255, 155, 84, 0.06);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 155, 84, 0.08),
+    0 10px 24px rgba(255, 155, 84, 0.08);
 }
 
 .product-chip-logo {
@@ -205,6 +208,11 @@ pre {
   line-height: 0.98;
 }
 
+.warm-accent {
+  color: var(--accent-warm);
+  text-shadow: 0 0 22px rgba(255, 155, 84, 0.16);
+}
+
 .hero-text {
   max-width: 42rem;
   margin: 1rem auto 0;
@@ -243,9 +251,11 @@ pre {
 }
 
 .button-primary {
-  background: rgba(255, 255, 255, 0.96);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 240, 229, 0.96));
   color: #101521;
-  box-shadow: 0 14px 28px rgba(255, 155, 84, 0.16);
+  box-shadow:
+    0 14px 28px rgba(255, 155, 84, 0.18),
+    0 2px 0 rgba(255, 255, 255, 0.2) inset;
 }
 
 .button-secondary {
@@ -308,9 +318,10 @@ pre {
 
 .code-tab-active {
   background:
-    linear-gradient(180deg, rgba(255, 155, 84, 0.16), rgba(255, 255, 255, 0.05)),
+    linear-gradient(180deg, rgba(255, 155, 84, 0.24), rgba(255, 255, 255, 0.05)),
     rgba(255, 255, 255, 0.08);
   color: var(--ink-inverse);
+  border: 1px solid rgba(255, 155, 84, 0.24);
 }
 
 .code-window-body {
@@ -331,11 +342,11 @@ pre {
 
 .status-pill {
   padding: 0.26rem 0.52rem;
-  border: 1px solid rgba(255, 155, 84, 0.14);
+  border: 1px solid rgba(255, 155, 84, 0.24);
   border-radius: 999px;
-  color: rgba(245, 247, 251, 0.66);
+  color: rgba(255, 229, 214, 0.94);
   font-size: 0.74rem;
-  background: rgba(255, 155, 84, 0.06);
+  background: rgba(255, 155, 84, 0.12);
 }
 
 .hero-proof {
@@ -405,8 +416,9 @@ pre {
 
 .hero-stage-lane-left .stage-tile:nth-child(2),
 .hero-stage-lane-right .stage-tile:nth-child(2) {
-  border-color: rgba(255, 155, 84, 0.18);
-  box-shadow: 0 12px 26px rgba(255, 155, 84, 0.09);
+  border-color: rgba(255, 155, 84, 0.28);
+  background: linear-gradient(180deg, rgba(255, 155, 84, 0.12), rgba(22, 29, 39, 0.88));
+  box-shadow: 0 12px 26px rgba(255, 155, 84, 0.13);
 }
 
 .stage-focus {
@@ -416,13 +428,14 @@ pre {
   transform: translateX(-50%);
   width: min(100%, 260px);
   padding: 1rem;
+  border-color: rgba(255, 155, 84, 0.26);
   background:
-    linear-gradient(180deg, rgba(121, 231, 220, 0.09), rgba(255, 155, 84, 0.05)),
+    linear-gradient(180deg, rgba(121, 231, 220, 0.09), rgba(255, 155, 84, 0.12)),
     rgba(22, 29, 39, 0.94);
   box-shadow:
     0 18px 36px rgba(1, 4, 11, 0.34),
     0 0 24px rgba(121, 231, 220, 0.15),
-    0 0 30px rgba(255, 155, 84, 0.08);
+    0 0 30px rgba(255, 155, 84, 0.14);
 }
 
 .stage-focus pre {
