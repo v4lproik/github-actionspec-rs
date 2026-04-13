@@ -3,6 +3,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use glob::glob;
+
 use crate::contracts::{declaration_schema_path, workflow_schema_path};
 use crate::discovery::find_declaration;
 use crate::errors::AppError;
@@ -51,6 +53,27 @@ fn collect_directory_actuals(path: &Path) -> Result<Vec<PathBuf>, AppError> {
     Ok(actual_paths)
 }
 
+fn has_glob_pattern(path: &Path) -> bool {
+    let path = path.to_string_lossy();
+    path.contains('*') || path.contains('?') || path.contains('[')
+}
+
+fn collect_glob_actuals(path: &Path) -> Result<Vec<PathBuf>, AppError> {
+    let pattern = path.to_string_lossy().into_owned();
+    let mut actual_paths = glob(&pattern)?
+        .filter_map(Result::ok)
+        .filter(|entry| entry.is_file())
+        .collect::<Vec<_>>();
+
+    actual_paths.sort();
+
+    if actual_paths.is_empty() {
+        return Err(AppError::NoActualGlobMatches(pattern));
+    }
+
+    Ok(actual_paths)
+}
+
 fn resolve_actual_paths(paths: &[PathBuf]) -> Result<Vec<PathBuf>, AppError> {
     if paths.is_empty() {
         return Err(AppError::MissingActualPaths);
@@ -60,6 +83,11 @@ fn resolve_actual_paths(paths: &[PathBuf]) -> Result<Vec<PathBuf>, AppError> {
     for path in paths {
         if path.is_dir() {
             resolved_paths.extend(collect_directory_actuals(path)?);
+            continue;
+        }
+
+        if has_glob_pattern(path) {
+            resolved_paths.extend(collect_glob_actuals(path)?);
             continue;
         }
 
@@ -359,5 +387,81 @@ mod tests {
         .expect_err("validation should fail");
 
         assert!(error.to_string().contains(&empty_dir.display().to_string()));
+    }
+
+    #[test]
+    fn validate_contract_expands_globbed_actual_files() {
+        let temp = tempdir().expect("temp dir should be created");
+        let schema = temp.path().join("schema.cue");
+        let contract = temp.path().join("contract.cue");
+        let actual_dir = temp.path().join("actuals");
+        let actual_one = actual_dir.join("actual-one.json");
+        let actual_two = actual_dir.join("actual-two.json");
+        fs::create_dir_all(&actual_dir).expect("actual dir should be created");
+        fs::write(
+            &schema,
+            "package actionspec\n#WorkflowRun: {workflow: string, jobs: [string]: {result: string}}\n",
+        )
+        .expect("schema should be written");
+        fs::write(
+            &contract,
+            "package actionspec\nrun: #WorkflowRun & {workflow: \"demo\", jobs: {build: {result: \"success\"}}}\n",
+        )
+        .expect("contract should be written");
+        fs::write(
+            &actual_one,
+            "{\"run\":{\"workflow\":\"demo\",\"jobs\":{\"build\":{\"result\":\"success\"}}}}",
+        )
+        .expect("actual one should be written");
+        fs::write(
+            &actual_two,
+            "{\"run\":{\"workflow\":\"demo\",\"jobs\":{\"build\":{\"result\":\"success\"}}}}",
+        )
+        .expect("actual two should be written");
+
+        let env = install_fake_cue(
+            temp.path(),
+            "#!/bin/sh\nif [ \"$1\" = \"version\" ]; then\n  exit 0\nfi\nif [ \"$1\" = \"vet\" ]; then\n  json_count=0\n  shift\n  for arg in \"$@\"; do\n    case \"$arg\" in\n      *.json) json_count=$((json_count + 1));;\n    esac\n  done\n  if [ \"$json_count\" -ne 1 ]; then\n    exit 7\n  fi\n  exit 0\nfi\nexit 1\n",
+        );
+
+        let result = validate_contract(ValidateContractOptions {
+            schema_paths: vec![schema],
+            contract_path: contract,
+            actual_paths: vec![actual_dir.join("*.json")],
+            cwd: Some(temp.path().to_path_buf()),
+            env: Some(env),
+        });
+
+        assert!(result.is_ok(), "globbed actual files should validate");
+    }
+
+    #[test]
+    fn validate_contract_errors_when_actual_glob_matches_nothing() {
+        let temp = tempdir().expect("temp dir should be created");
+        let contract = temp.path().join("contract.cue");
+        let schema = temp.path().join("schema.cue");
+        let missing_glob = temp.path().join("actuals").join("*.json");
+        fs::write(&contract, "package actionspec\nrun: {}\n").expect("contract should be written");
+        fs::write(
+            &schema,
+            "package actionspec\n#WorkflowRun: {workflow: string, jobs: [string]: {result: string}}\n",
+        )
+        .expect("schema should be written");
+
+        let error = validate_contract(ValidateContractOptions {
+            schema_paths: vec![schema],
+            contract_path: contract,
+            actual_paths: vec![missing_glob.clone()],
+            cwd: None,
+            env: None,
+        })
+        .expect_err("validation should fail");
+
+        assert!(error
+            .to_string()
+            .contains("No files matched actual glob pattern"));
+        assert!(error
+            .to_string()
+            .contains(missing_glob.to_string_lossy().as_ref()));
     }
 }

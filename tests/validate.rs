@@ -66,6 +66,32 @@ fn validates_multiple_actuals_through_cli() {
 }
 
 #[test]
+fn validates_globbed_actuals_through_cli() {
+    let temp = tempdir().unwrap();
+    let (schema, contract, _) = support::write_validation_fixture(temp.path(), "demo");
+    let actual_dir = temp.path().join("actuals");
+    std::fs::create_dir_all(&actual_dir).unwrap();
+    let actual_one = actual_dir.join("actual-one.json");
+    let actual_two = actual_dir.join("actual-two.json");
+    support::write_actual(&actual_one, "demo");
+    support::write_actual(&actual_two, "demo");
+    let env = support::install_fake_cue(&temp, "success");
+
+    let mut command = Command::cargo_bin("github-actionspec").unwrap();
+    command
+        .envs(env)
+        .arg("validate")
+        .arg("--schema")
+        .arg(&schema)
+        .arg("--contract")
+        .arg(&contract)
+        .arg("--actual")
+        .arg(actual_dir.join("*.json"));
+
+    command.assert().success();
+}
+
+#[test]
 fn fails_when_cue_vet_fails() {
     let temp = tempdir().unwrap();
     let (schema, contract, actual) = support::write_validation_fixture(temp.path(), "demo");
