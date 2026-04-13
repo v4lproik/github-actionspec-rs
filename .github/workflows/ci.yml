@@ -26,7 +26,8 @@ jobs:
       core: ${{ steps.manual.outputs.core || steps.filter.outputs.core }}
       infra: ${{ steps.manual.outputs.infra || steps.filter.outputs.infra }}
       docs: ${{ steps.manual.outputs.docs || steps.filter.outputs.docs }}
-      run_ci: ${{ steps.manual.outputs.run_ci || (steps.filter.outputs.core == 'true' || steps.filter.outputs.infra == 'true') }}
+      run_ci: ${{ steps.manual.outputs.run_ci || (steps.filter.outputs.core == 'true' || steps.filter.outputs.infra == 'true' || steps.filter.outputs.docs == 'true') }}
+      run_pages: ${{ steps.manual.outputs.run_pages || steps.filter.outputs.docs }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -37,10 +38,11 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
           {
-            echo "core=false"
-            echo "infra=false"
-            echo "docs=false"
+            echo "core=true"
+            echo "infra=true"
+            echo "docs=true"
             echo "run_ci=true"
+            echo "run_pages=true"
           } >> "${GITHUB_OUTPUT}"
       - name: Classify changed files
         id: filter
@@ -58,27 +60,16 @@ jobs:
           - Core: `${{ steps.manual.outputs.core || steps.filter.outputs.core || 'false' }}`
           - Infra: `${{ steps.manual.outputs.infra || steps.filter.outputs.infra || 'false' }}`
           - Docs: `${{ steps.manual.outputs.docs || steps.filter.outputs.docs || 'false' }}`
-          - Run CI: `${{ steps.manual.outputs.run_ci || (steps.filter.outputs.core == 'true' || steps.filter.outputs.infra == 'true') }}`
+          - Run CI: `${{ steps.manual.outputs.run_ci || (steps.filter.outputs.core == 'true' || steps.filter.outputs.infra == 'true' || steps.filter.outputs.docs == 'true') }}`
+          - Run Pages: `${{ steps.manual.outputs.run_pages || steps.filter.outputs.docs || 'false' }}`
           EOF
 
-  checks:
+  lint:
     if: ${{ !cancelled() && needs.detect-changes.outputs.run_ci == 'true' }}
-    name: ${{ matrix.name }}
+    name: Lint
     runs-on: ubuntu-latest
     needs:
       - detect-changes
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: Build
-            recipe: build
-          - name: Lint
-            recipe: lint
-          - name: Test
-            recipe: test
-          - name: Runtime
-            recipe: runtime-ci
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -88,18 +79,49 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: just
-      - name: Run ${{ matrix.recipe }}
-        run: just ${{ matrix.recipe }}
+      - name: Run lint
+        run: just lint
 
-  action-smoke:
+  build:
     if: ${{ !cancelled() && needs.detect-changes.outputs.run_ci == 'true' }}
-    name: Local Action Smoke
+    name: Build
     runs-on: ubuntu-latest
     needs:
       - detect-changes
+      - lint
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Install just
+        uses: taiki-e/install-action@v2
+        with:
+          tool: just
+      - name: Run build
+        run: just build
+
+  tests:
+    if: ${{ !cancelled() && needs.detect-changes.outputs.run_ci == 'true' }}
+    name: Tests
+    runs-on: ubuntu-latest
+    needs:
+      - detect-changes
+      - build
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Install just
+        uses: taiki-e/install-action@v2
+        with:
+          tool: just
+      - name: Run tests
+        run: just test
       - name: Validate passing fixture directory
         uses: ./
         with:
@@ -144,27 +166,6 @@ jobs:
             echo "::error::The inconsistent test safeguard fixture should fail validation."
             exit 1
           fi
-
-  coverage:
-    if: ${{ !cancelled() && needs.detect-changes.outputs.run_ci == 'true' }}
-    name: Coverage
-    runs-on: ubuntu-latest
-    needs:
-      - detect-changes
-      - checks
-      - action-smoke
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      - name: Install just
-        uses: taiki-e/install-action@v2
-        with:
-          tool: just
       - name: Generate coverage
         run: just coverage-ci
       - name: Upload coverage to Codecov
@@ -174,15 +175,13 @@ jobs:
           fail_ci_if_error: true
           files: ./target/llvm-cov/lcov.info
 
-  publish-runtime:
-    if: ${{ !cancelled() && needs.detect-changes.outputs.run_ci == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.checks.result == 'success' && needs.action-smoke.result == 'success' && needs.coverage.result == 'success' }}
-    name: Publish Runtime Image
+  docker:
+    if: ${{ !cancelled() && needs.detect-changes.outputs.run_ci == 'true' }}
+    name: Docker
     runs-on: ubuntu-latest
     needs:
       - detect-changes
-      - checks
-      - action-smoke
-      - coverage
+      - tests
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -192,6 +191,8 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: just
+      - name: Validate runtime image
+        run: just runtime-ci
       - name: Check publish credentials
         id: publish-check
         env:
@@ -210,8 +211,65 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Publish runtime image
-        if: ${{ steps.publish-check.outputs.enabled == 'true' }}
+        if: ${{ steps.publish-check.outputs.enabled == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         run: just docker-push-runtime docker.io/v4lproik/github-actionspec-rs:latest
       - name: Skip publish when credentials are missing
-        if: ${{ steps.publish-check.outputs.enabled != 'true' }}
+        if: ${{ steps.publish-check.outputs.enabled != 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         run: echo "Docker Hub credentials are not configured; skipping runtime image publish."
+
+  pages:
+    if: ${{ !cancelled() && needs.detect-changes.outputs.run_pages == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    name: Pages
+    runs-on: ubuntu-latest
+    needs:
+      - detect-changes
+      - docker
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Check Pages enablement
+        id: pages-check
+        uses: actions/github-script@v8
+        with:
+          script: |
+            try {
+              await github.rest.repos.getPages({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+              });
+              core.setOutput("enabled", "true");
+            } catch (error) {
+              if (error.status === 404) {
+                core.setOutput("enabled", "false");
+                return;
+              }
+              throw error;
+            }
+      - name: Configure Pages
+        if: ${{ steps.pages-check.outputs.enabled == 'true' }}
+        uses: actions/configure-pages@v5
+      - name: Upload site artifact
+        if: ${{ steps.pages-check.outputs.enabled == 'true' }}
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: docs
+      - name: Deploy to GitHub Pages
+        if: ${{ steps.pages-check.outputs.enabled == 'true' }}
+        id: deployment
+        uses: actions/deploy-pages@v4
+      - name: Skip when Pages is not enabled
+        if: ${{ steps.pages-check.outputs.enabled != 'true' }}
+        run: |
+          cat <<'EOF' >> "${GITHUB_STEP_SUMMARY}"
+          ## Pages Skipped
+          GitHub Pages is not enabled for this repository yet.
+
+          Enable Pages and select GitHub Actions as the source to publish the site.
+          EOF

@@ -1,10 +1,10 @@
 use clap::Parser;
 use github_actionspec_rs::cli::{Cli, Command};
 use github_actionspec_rs::discovery::discover_declarations;
-use std::path::PathBuf;
 use github_actionspec_rs::validate::{
     validate_contract, validate_repo_workflow, ValidateContractOptions, ValidateRepoWorkflowOptions,
 };
+use std::path::PathBuf;
 
 fn main() {
     if let Err(error) = run() {

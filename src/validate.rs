@@ -304,10 +304,16 @@ mod tests {
             "package actionspec\nrun: #WorkflowRun & {workflow: \"demo\", jobs: {build: {result: \"success\"}}}\n",
         )
         .expect("contract should be written");
-        fs::write(&actual_one, "{\"run\":{\"workflow\":\"demo\",\"jobs\":{\"build\":{\"result\":\"success\"}}}}")
-            .expect("actual one should be written");
-        fs::write(&actual_two, "{\"run\":{\"workflow\":\"demo\",\"jobs\":{\"build\":{\"result\":\"success\"}}}}")
-            .expect("actual two should be written");
+        fs::write(
+            &actual_one,
+            "{\"run\":{\"workflow\":\"demo\",\"jobs\":{\"build\":{\"result\":\"success\"}}}}",
+        )
+        .expect("actual one should be written");
+        fs::write(
+            &actual_two,
+            "{\"run\":{\"workflow\":\"demo\",\"jobs\":{\"build\":{\"result\":\"success\"}}}}",
+        )
+        .expect("actual two should be written");
 
         let env = install_fake_cue(
             temp.path(),
