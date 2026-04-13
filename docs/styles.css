@@ -9,6 +9,8 @@
   --line-soft: rgba(255, 255, 255, 0.08);
   --accent: #79e7dc;
   --accent-strong: #45cfc1;
+  --accent-warm: #ff9b54;
+  --accent-warm-soft: rgba(255, 155, 84, 0.14);
   --hero-top: #17132a;
   --hero-bottom: #121821;
   --shadow: 0 18px 52px rgba(16, 23, 34, 0.08);
@@ -30,7 +32,7 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
-  font-family: "Sora", "Avenir Next", "Segoe UI", sans-serif;
+  font-family: "Public Sans", "Avenir Next", "Segoe UI", sans-serif;
   color: var(--ink);
   background: linear-gradient(180deg, #f8fafc 0%, var(--bg) 100%);
 }
@@ -109,6 +111,7 @@ pre {
   height: 2rem;
   border-radius: 0.8rem;
   overflow: hidden;
+  box-shadow: 0 8px 20px rgba(255, 155, 84, 0.14);
 }
 
 .brand-logo {
@@ -161,6 +164,7 @@ pre {
   color: rgba(245, 247, 251, 0.82);
   font-size: 0.74rem;
   letter-spacing: 0.02em;
+  box-shadow: inset 0 0 0 1px rgba(255, 155, 84, 0.06);
 }
 
 .product-chip-logo {
@@ -182,6 +186,10 @@ pre {
 .eyebrow,
 .flow-label {
   color: var(--accent);
+}
+
+.summary-kicker {
+  color: #285d70;
 }
 
 .hero h1,
@@ -237,6 +245,7 @@ pre {
 .button-primary {
   background: rgba(255, 255, 255, 0.96);
   color: #101521;
+  box-shadow: 0 14px 28px rgba(255, 155, 84, 0.16);
 }
 
 .button-secondary {
@@ -298,7 +307,9 @@ pre {
 }
 
 .code-tab-active {
-  background: rgba(255, 255, 255, 0.08);
+  background:
+    linear-gradient(180deg, rgba(255, 155, 84, 0.16), rgba(255, 255, 255, 0.05)),
+    rgba(255, 255, 255, 0.08);
   color: var(--ink-inverse);
 }
 
@@ -320,10 +331,11 @@ pre {
 
 .status-pill {
   padding: 0.26rem 0.52rem;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 155, 84, 0.14);
   border-radius: 999px;
   color: rgba(245, 247, 251, 0.66);
   font-size: 0.74rem;
+  background: rgba(255, 155, 84, 0.06);
 }
 
 .hero-proof {
@@ -391,6 +403,12 @@ pre {
   text-align: center;
 }
 
+.hero-stage-lane-left .stage-tile:nth-child(2),
+.hero-stage-lane-right .stage-tile:nth-child(2) {
+  border-color: rgba(255, 155, 84, 0.18);
+  box-shadow: 0 12px 26px rgba(255, 155, 84, 0.09);
+}
+
 .stage-focus {
   position: absolute;
   left: 50%;
@@ -399,11 +417,12 @@ pre {
   width: min(100%, 260px);
   padding: 1rem;
   background:
-    linear-gradient(180deg, rgba(121, 231, 220, 0.09), rgba(255, 255, 255, 0.02)),
+    linear-gradient(180deg, rgba(121, 231, 220, 0.09), rgba(255, 155, 84, 0.05)),
     rgba(22, 29, 39, 0.94);
   box-shadow:
     0 18px 36px rgba(1, 4, 11, 0.34),
-    0 0 24px rgba(121, 231, 220, 0.15);
+    0 0 24px rgba(121, 231, 220, 0.15),
+    0 0 30px rgba(255, 155, 84, 0.08);
 }
 
 .stage-focus pre {
