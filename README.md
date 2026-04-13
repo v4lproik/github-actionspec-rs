@@ -53,6 +53,27 @@ Commands:
 - `github-actionspec validate-repo --repo <path> [--workflow <name>] --actual <file-dir-or-glob> [--report-file <report.json>]`
 - `github-actionspec dashboard --current <report.json> [--baseline <report.json>] --output <dashboard.md>`
 
+Matrix-aware contracts can assert both matrix dimensions and job outputs. For example, this contract keeps a `build-ts-service` matrix entry aligned with the emitted `contract_build` output:
+
+```cue
+package actionspec
+
+run: #WorkflowRun & {
+  workflow: "build.yml"
+  jobs: {
+    build: {
+      result: "success"
+      matrix: {
+        app: "build-ts-service"
+      }
+      outputs: {
+        contract_build: "build-ts-service"
+      }
+    }
+  }
+}
+```
+
 ## GitHub Action
 
 This repository also exposes a Docker-based GitHub Action for the common `validate-repo` flow. The action runs the bundled `github-actionspec` binary together with the bundled `cue` runtime, so the calling workflow only needs a checked out repository and a normalized JSON payload.
