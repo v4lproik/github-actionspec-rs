@@ -7,7 +7,9 @@ use github_actionspec_rs::validate::{
     validate_contract, validate_repo_workflow, write_validation_report, ValidateContractOptions,
     ValidateRepoWorkflowOptions,
 };
-use github_actionspec_rs::workflow_calls::{validate_workflow_callers, ValidateCallersOptions};
+use github_actionspec_rs::workflow_calls::{
+    validate_workflow_callers, write_workflow_call_report, ValidateCallersOptions,
+};
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
@@ -101,16 +103,21 @@ fn run() -> Result<(), github_actionspec_rs::errors::AppError> {
         Command::ValidateCallers {
             repo,
             workflows_dir,
+            report_file,
+            dry_run,
         } => {
             let result = validate_workflow_callers(ValidateCallersOptions {
                 repo_root: repo,
                 workflows_dir,
             })?;
-            if !result.issues.is_empty() {
+            if let Some(report_file) = report_file {
+                write_workflow_call_report(&result.report, &report_file)?;
+            }
+            if result.failed_count > 0 && !dry_run {
                 return Err(
                     github_actionspec_rs::errors::AppError::WorkflowCallerValidationFailures {
-                        failed: result.issues.len(),
-                        details: summarize_workflow_call_issues(&result.issues),
+                        failed: result.failed_count,
+                        details: summarize_workflow_call_issues(&result.report.issues),
                     },
                 );
             }
@@ -121,20 +128,20 @@ fn run() -> Result<(), github_actionspec_rs::errors::AppError> {
             actual,
             declarations_dir,
             report_file,
+            dry_run,
         } => {
             let result = validate_repo_workflow(ValidateRepoWorkflowOptions {
                 repo_root: repo,
                 workflow,
                 actual_paths: normalize_actual_inputs(actual),
                 declarations_dir,
-                report_file: report_file.clone(),
                 cwd: None,
                 env: None,
             })?;
             if let Some(report_file) = report_file {
                 write_validation_report(&result.report, &report_file)?;
             }
-            if result.failed_count > 0 {
+            if result.failed_count > 0 && !dry_run {
                 return Err(github_actionspec_rs::errors::AppError::ValidationFailures {
                     failed: result.failed_count,
                     total: result.report.actuals.len(),

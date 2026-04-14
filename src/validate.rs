@@ -9,7 +9,8 @@ use crate::contracts::{declaration_schema_path, workflow_schema_path};
 use crate::discovery::find_declaration;
 use crate::errors::AppError;
 use crate::types::{
-    ActualValidationReport, ValidationReport, ValidationStatus, WorkflowRunEnvelope,
+    ActualValidationReport, ValidationReport, ValidationStatus, WorkflowJobRecord,
+    WorkflowRunEnvelope,
 };
 
 #[derive(Debug, Clone)]
@@ -27,7 +28,6 @@ pub struct ValidateRepoWorkflowOptions {
     pub workflow: Option<String>,
     pub actual_paths: Vec<PathBuf>,
     pub declarations_dir: PathBuf,
-    pub report_file: Option<PathBuf>,
     pub cwd: Option<PathBuf>,
     pub env: Option<HashMap<String, String>>,
 }
@@ -42,6 +42,13 @@ pub struct ValidateRepoWorkflowResult {
 struct LoadedActual {
     actual_path: PathBuf,
     envelope: WorkflowRunEnvelope,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct WorkflowRunSummary {
+    jobs: std::collections::BTreeMap<String, String>,
+    matrix: Option<std::collections::BTreeMap<String, serde_json::Value>>,
+    outputs: Option<std::collections::BTreeMap<String, std::collections::BTreeMap<String, String>>>,
 }
 
 fn assert_readable(path: &Path) -> Result<(), AppError> {
@@ -153,6 +160,35 @@ fn load_actuals(paths: &[PathBuf]) -> Result<Vec<LoadedActual>, AppError> {
             })
         })
         .collect()
+}
+
+fn summarize_workflow_jobs(
+    jobs: &std::collections::BTreeMap<String, WorkflowJobRecord>,
+) -> WorkflowRunSummary {
+    let mut summary = WorkflowRunSummary {
+        jobs: std::collections::BTreeMap::new(),
+        matrix: None,
+        outputs: None,
+    };
+
+    for (job_name, job) in jobs {
+        summary.jobs.insert(job_name.clone(), job.result.clone());
+
+        if summary.matrix.is_none() {
+            summary.matrix = job.matrix.clone();
+        }
+
+        if let Some(job_outputs) = &job.outputs {
+            if !job_outputs.is_empty() {
+                summary
+                    .outputs
+                    .get_or_insert_with(std::collections::BTreeMap::new)
+                    .insert(job_name.clone(), job_outputs.clone());
+            }
+        }
+    }
+
+    summary
 }
 
 fn apply_env(command: &mut Command, env: &Option<HashMap<String, String>>) {
@@ -285,6 +321,12 @@ pub fn validate_contract(options: ValidateContractOptions) -> Result<(), AppErro
 }
 
 pub fn write_validation_report(report: &ValidationReport, path: &Path) -> Result<(), AppError> {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent)?;
+    }
     fs::write(path, serde_json::to_string_pretty(report)?)?;
     Ok(())
 }
@@ -297,7 +339,6 @@ pub fn validate_repo_workflow(
         workflow,
         actual_paths,
         declarations_dir,
-        report_file: _,
         cwd,
         env,
     } = options;
@@ -324,31 +365,10 @@ pub fn validate_repo_workflow(
     let mut failed = 0;
 
     for actual in actuals {
-        let outputs = actual
-            .envelope
-            .run
-            .jobs
-            .iter()
-            .filter_map(|(job_name, job)| {
-                job.outputs
-                    .as_ref()
-                    .filter(|outputs| !outputs.is_empty())
-                    .map(|outputs| (job_name.clone(), outputs.clone()))
-            })
-            .collect::<std::collections::BTreeMap<_, _>>();
-        let matrix = actual
-            .envelope
-            .run
-            .jobs
-            .values()
-            .find_map(|job| job.matrix.clone());
-        let jobs = actual
-            .envelope
-            .run
-            .jobs
-            .iter()
-            .map(|(job_name, job)| (job_name.clone(), job.result.clone()))
-            .collect();
+        // Reports should reflect the observed payload exactly once, so derive all summary
+        // fields from a single pass over the workflow jobs rather than re-scanning the map for
+        // each report section.
+        let summary = summarize_workflow_jobs(&actual.envelope.run.jobs);
         let cue_result = run_cue_vet(
             &[workflow_schema_path(), declaration_schema_path()],
             &declaration.declaration_path,
@@ -369,9 +389,9 @@ pub fn validate_repo_workflow(
             workflow: actual.envelope.run.workflow,
             ref_name: actual.envelope.run.ref_name,
             status,
-            jobs,
-            matrix,
-            outputs: (!outputs.is_empty()).then_some(outputs),
+            jobs: summary.jobs,
+            matrix: summary.matrix,
+            outputs: summary.outputs,
             error,
         });
     }
@@ -393,9 +413,92 @@ mod tests {
     use std::collections::HashMap;
     use std::fs;
 
+    use serde_json::json;
     use tempfile::tempdir;
 
     use super::*;
+
+    #[test]
+    fn summarize_workflow_jobs_collects_report_fields_in_one_pass() {
+        let jobs = std::collections::BTreeMap::from([
+            (
+                "build".to_owned(),
+                WorkflowJobRecord {
+                    result: "success".to_owned(),
+                    outputs: Some(std::collections::BTreeMap::from([(
+                        "artifact".to_owned(),
+                        "build-linux-amd64".to_owned(),
+                    )])),
+                    matrix: Some(std::collections::BTreeMap::from([
+                        ("app".to_owned(), json!("build-ts-service")),
+                        ("target".to_owned(), json!("linux-amd64")),
+                    ])),
+                    steps: None,
+                },
+            ),
+            (
+                "lint".to_owned(),
+                WorkflowJobRecord {
+                    result: "success".to_owned(),
+                    outputs: Some(std::collections::BTreeMap::new()),
+                    matrix: Some(std::collections::BTreeMap::from([(
+                        "app".to_owned(),
+                        json!("another-job"),
+                    )])),
+                    steps: None,
+                },
+            ),
+        ]);
+
+        let summary = summarize_workflow_jobs(&jobs);
+
+        assert_eq!(
+            summary.jobs,
+            std::collections::BTreeMap::from([
+                ("build".to_owned(), "success".to_owned()),
+                ("lint".to_owned(), "success".to_owned()),
+            ])
+        );
+        assert_eq!(
+            summary.matrix,
+            Some(std::collections::BTreeMap::from([
+                ("app".to_owned(), json!("build-ts-service")),
+                ("target".to_owned(), json!("linux-amd64")),
+            ]))
+        );
+        assert_eq!(
+            summary.outputs,
+            Some(std::collections::BTreeMap::from([(
+                "build".to_owned(),
+                std::collections::BTreeMap::from([(
+                    "artifact".to_owned(),
+                    "build-linux-amd64".to_owned(),
+                )]),
+            )]))
+        );
+    }
+
+    #[test]
+    fn summarize_workflow_jobs_omits_empty_outputs_and_missing_matrix() {
+        let jobs = std::collections::BTreeMap::from([(
+            "lint".to_owned(),
+            WorkflowJobRecord {
+                result: "success".to_owned(),
+                outputs: Some(std::collections::BTreeMap::new()),
+                matrix: None,
+                steps: None,
+            },
+        )]);
+
+        let summary = summarize_workflow_jobs(&jobs);
+
+        assert_eq!(
+            summary.jobs,
+            std::collections::BTreeMap::from([("lint".to_owned(), "success".to_owned())])
+        );
+        assert_eq!(summary.matrix, None);
+        assert_eq!(summary.outputs, None);
+    }
 
     fn install_fake_cue(temp_root: &Path, script: &str) -> HashMap<String, String> {
         let bin_dir = temp_root.join("bin");
@@ -501,7 +604,6 @@ mod tests {
             workflow: Some("missing.yml".to_owned()),
             actual_paths: vec![actual],
             declarations_dir: PathBuf::from(".github/actionspec"),
-            report_file: None,
             cwd: None,
             env: None,
         })
@@ -630,7 +732,6 @@ mod tests {
             workflow: None,
             actual_paths: vec![actual],
             declarations_dir: PathBuf::from(".github/actionspec"),
-            report_file: None,
             cwd: None,
             env: Some(env),
         })
@@ -668,7 +769,6 @@ mod tests {
             workflow: None,
             actual_paths: vec![actual.clone(), actual],
             declarations_dir: PathBuf::from(".github/actionspec"),
-            report_file: None,
             cwd: None,
             env: Some(env),
         })
@@ -699,7 +799,6 @@ mod tests {
             workflow: None,
             actual_paths: vec![first, second],
             declarations_dir: PathBuf::from(".github/actionspec"),
-            report_file: None,
             cwd: None,
             env: None,
         })
@@ -746,7 +845,6 @@ mod tests {
             workflow: Some("ci.yml".to_owned()),
             actual_paths: vec![passing.clone(), failing.clone()],
             declarations_dir: PathBuf::from(".github/actionspec"),
-            report_file: None,
             cwd: None,
             env: Some(env),
         })

@@ -28,7 +28,6 @@ fn validate_repo(
         workflow: Some("build.yml".to_owned()),
         actual_paths,
         declarations_dir: declarations_dir(),
-        report_file: None,
         cwd: Some(repo_root.to_path_buf()),
         env: None,
     })

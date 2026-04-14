@@ -212,6 +212,93 @@ fn writes_report_file_before_failing_validation() {
 }
 
 #[test]
+fn dry_run_preserves_validation_report_without_failing() {
+    let repo = tempdir().unwrap();
+    support::write_declaration(repo.path(), ".github/actionspec/ci/main.cue", "ci.yml");
+    let failing = repo.path().join("ci-main-skipped.json");
+    std::fs::write(
+        &failing,
+        "{\"run\":{\"workflow\":\"ci.yml\",\"ref\":\"main\",\"jobs\":{\"build\":{\"result\":\"skipped\"}}}}",
+    )
+    .unwrap();
+    let report = repo.path().join("validation-report.json");
+    let env = support::install_fake_cue_script(
+        repo.path(),
+        "#!/bin/sh\nif [ \"$1\" = \"version\" ]; then\n  exit 0\nfi\nif [ \"$1\" = \"vet\" ]; then\n  echo \"build should not be skipped\" >&2\n  exit 9\nfi\nexit 1\n",
+    );
+
+    let mut command = Command::cargo_bin("github-actionspec").unwrap();
+    command
+        .envs(env)
+        .arg("validate-repo")
+        .arg("--repo")
+        .arg(repo.path())
+        .arg("--workflow")
+        .arg("ci.yml")
+        .arg("--actual")
+        .arg(&failing)
+        .arg("--report-file")
+        .arg(&report)
+        .arg("--dry-run");
+
+    command.assert().success();
+
+    let report: ValidationReport =
+        serde_json::from_str(&std::fs::read_to_string(report).unwrap()).unwrap();
+    assert_eq!(report.actuals.len(), 1);
+    assert_eq!(
+        report.actuals[0].status,
+        github_actionspec_rs::types::ValidationStatus::Failed
+    );
+    assert!(report.actuals[0]
+        .error
+        .as_deref()
+        .is_some_and(|error| error.contains("build should not be skipped")));
+}
+
+#[test]
+fn dry_run_creates_missing_parent_directories_for_validation_report() {
+    let repo = tempdir().unwrap();
+    support::write_declaration(repo.path(), ".github/actionspec/ci/main.cue", "ci.yml");
+    let failing = repo.path().join("ci-main-skipped.json");
+    std::fs::write(
+        &failing,
+        "{\"run\":{\"workflow\":\"ci.yml\",\"ref\":\"main\",\"jobs\":{\"build\":{\"result\":\"skipped\"}}}}",
+    )
+    .unwrap();
+    let report = repo
+        .path()
+        .join("target")
+        .join("actionspec")
+        .join("validation-report.json");
+    let env = support::install_fake_cue_script(
+        repo.path(),
+        "#!/bin/sh\nif [ \"$1\" = \"version\" ]; then\n  exit 0\nfi\nif [ \"$1\" = \"vet\" ]; then\n  echo \"build should not be skipped\" >&2\n  exit 9\nfi\nexit 1\n",
+    );
+
+    let mut command = Command::cargo_bin("github-actionspec").unwrap();
+    command
+        .envs(env)
+        .arg("validate-repo")
+        .arg("--repo")
+        .arg(repo.path())
+        .arg("--workflow")
+        .arg("ci.yml")
+        .arg("--actual")
+        .arg(&failing)
+        .arg("--report-file")
+        .arg(&report)
+        .arg("--dry-run");
+
+    command.assert().success();
+
+    assert!(
+        report.is_file(),
+        "report should be created in nested directories"
+    );
+}
+
+#[test]
 fn report_file_preserves_matrix_metadata() {
     let repo = tempdir().unwrap();
     support::write_declaration(

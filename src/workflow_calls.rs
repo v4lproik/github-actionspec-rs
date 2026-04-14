@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 use serde_yaml::{Mapping, Value};
 use walkdir::WalkDir;
 
@@ -17,10 +18,35 @@ pub struct ValidateCallersOptions {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidateCallersResult {
+    pub report: WorkflowCallReport,
+    pub failed_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorkflowCallReport {
+    pub workflows: Vec<WorkflowCallAnalysis>,
     pub issues: Vec<CallerValidationIssue>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorkflowCallAnalysis {
+    pub workflow_path: PathBuf,
+    pub calls: Vec<WorkflowCallAnalysisCall>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorkflowCallAnalysisCall {
+    pub job_id: String,
+    pub callee_workflow: PathBuf,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub provided_inputs: BTreeMap<String, Value>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub referenced_outputs: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub issues: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct CallerValidationIssue {
     pub caller_workflow: PathBuf,
     pub job_id: String,
@@ -240,12 +266,19 @@ fn needs_output_regex() -> Result<Regex, AppError> {
         .map_err(AppError::from)
 }
 
-fn collect_output_references(value: &Value, references: &mut Vec<(String, String)>, regex: &Regex) {
+fn collect_output_references(
+    value: &Value,
+    references: &mut BTreeMap<String, BTreeSet<String>>,
+    regex: &Regex,
+) {
     match value {
         Value::String(string) => {
             for captures in regex.captures_iter(string) {
                 if let (Some(job_id), Some(output_name)) = (captures.get(1), captures.get(2)) {
-                    references.push((job_id.as_str().to_owned(), output_name.as_str().to_owned()));
+                    references
+                        .entry(job_id.as_str().to_owned())
+                        .or_default()
+                        .insert(output_name.as_str().to_owned());
                 }
             }
         }
@@ -286,11 +319,14 @@ fn describe_input_type(input_type: &WorkflowCallInputType) -> &'static str {
     }
 }
 
-fn build_call_map(calls: &[LocalWorkflowCall]) -> BTreeMap<String, PathBuf> {
-    calls
-        .iter()
-        .map(|call| (call.job_id.clone(), call.callee_path.clone()))
-        .collect()
+fn referenced_outputs_for_job(
+    output_references: &BTreeMap<String, BTreeSet<String>>,
+    job_id: &str,
+) -> Vec<String> {
+    output_references
+        .get(job_id)
+        .map(|outputs| outputs.iter().cloned().collect())
+        .unwrap_or_default()
 }
 
 fn push_issue(
@@ -306,6 +342,33 @@ fn push_issue(
         callee_workflow: callee_workflow.to_path_buf(),
         message: message.into(),
     });
+}
+
+fn record_issue(
+    issues: &mut Vec<CallerValidationIssue>,
+    call_issues: &mut Vec<String>,
+    workflow: &WorkflowFile,
+    job_id: &str,
+    callee_workflow: &Path,
+    message: impl Into<String>,
+) {
+    let message = message.into();
+    push_issue(issues, workflow, job_id, callee_workflow, message.clone());
+    call_issues.push(message);
+}
+
+pub fn write_workflow_call_report(
+    report: &WorkflowCallReport,
+    path: &Path,
+) -> Result<(), AppError> {
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(path, serde_json::to_string_pretty(report)?)?;
+    Ok(())
 }
 
 pub fn validate_workflow_callers(
@@ -324,20 +387,41 @@ pub fn validate_workflow_callers(
 
     let regex = needs_output_regex()?;
     let mut issues = Vec::new();
+    let mut workflows = Vec::new();
 
     for workflow in &workflow_files {
         let local_calls = discover_local_workflow_calls(workflow);
-        let call_map = build_call_map(&local_calls);
+        if local_calls.is_empty() {
+            continue;
+        }
+
+        let mut output_references = BTreeMap::new();
+        // Reusable workflow outputs are consumed via `${{ needs.<job>.outputs.<name> }}` in
+        // arbitrary strings, so we scan the full YAML document recursively instead of trying
+        // to maintain a bespoke AST for every expression-bearing field.
+        collect_output_references(&workflow.document, &mut output_references, &regex);
+        let mut calls = Vec::with_capacity(local_calls.len());
 
         for call in &local_calls {
+            let referenced_outputs = referenced_outputs_for_job(&output_references, &call.job_id);
+            let mut call_issues = Vec::new();
+
             let Some(contract) = contracts.get(&call.callee_path) else {
-                push_issue(
+                record_issue(
                     &mut issues,
+                    &mut call_issues,
                     workflow,
                     &call.job_id,
                     &call.callee_path,
                     "local reusable workflow is missing a workflow_call contract",
                 );
+                calls.push(WorkflowCallAnalysisCall {
+                    job_id: call.job_id.clone(),
+                    callee_workflow: call.callee_path.clone(),
+                    provided_inputs: call.provided_inputs.clone(),
+                    referenced_outputs,
+                    issues: call_issues,
+                });
                 continue;
             };
 
@@ -346,8 +430,9 @@ pub fn validate_workflow_callers(
                     && !input_spec.has_default
                     && !call.provided_inputs.contains_key(input_name)
                 {
-                    push_issue(
+                    record_issue(
                         &mut issues,
+                        &mut call_issues,
                         workflow,
                         &call.job_id,
                         &call.callee_path,
@@ -358,8 +443,9 @@ pub fn validate_workflow_callers(
 
             for (input_name, value) in &call.provided_inputs {
                 let Some(input_spec) = contract.inputs.get(input_name) else {
-                    push_issue(
+                    record_issue(
                         &mut issues,
+                        &mut call_issues,
                         workflow,
                         &call.job_id,
                         &call.callee_path,
@@ -369,8 +455,9 @@ pub fn validate_workflow_callers(
                 };
 
                 if !type_matches_literal(value, &input_spec.input_type) {
-                    push_issue(
+                    record_issue(
                         &mut issues,
+                        &mut call_issues,
                         workflow,
                         &call.job_id,
                         &call.callee_path,
@@ -381,37 +468,44 @@ pub fn validate_workflow_callers(
                     );
                 }
             }
-        }
 
-        let mut output_references = Vec::new();
-        // Reusable workflow outputs are consumed via `${{ needs.<job>.outputs.<name> }}` in
-        // arbitrary strings, so we scan the full YAML document recursively instead of trying
-        // to maintain a bespoke AST for every expression-bearing field.
-        collect_output_references(&workflow.document, &mut output_references, &regex);
-        for (job_id, output_name) in output_references {
-            let Some(callee_path) = call_map.get(&job_id) else {
-                continue;
-            };
-            let Some(contract) = contracts.get(callee_path) else {
-                continue;
-            };
-
-            if !contract.outputs.contains(&output_name) {
-                push_issue(
-                    &mut issues,
-                    workflow,
-                    &job_id,
-                    callee_path,
-                    format!("references missing reusable workflow output `{output_name}`"),
-                );
+            for output_name in &referenced_outputs {
+                if !contract.outputs.contains(output_name) {
+                    record_issue(
+                        &mut issues,
+                        &mut call_issues,
+                        workflow,
+                        &call.job_id,
+                        &call.callee_path,
+                        format!("references missing reusable workflow output `{output_name}`"),
+                    );
+                }
             }
+
+            calls.push(WorkflowCallAnalysisCall {
+                job_id: call.job_id.clone(),
+                callee_workflow: call.callee_path.clone(),
+                provided_inputs: call.provided_inputs.clone(),
+                referenced_outputs,
+                issues: call_issues,
+            });
         }
+
+        workflows.push(WorkflowCallAnalysis {
+            workflow_path: workflow.relative_path.clone(),
+            calls,
+        });
     }
 
     issues.sort();
     issues.dedup();
 
-    Ok(ValidateCallersResult { issues })
+    let failed_count = issues.len();
+
+    Ok(ValidateCallersResult {
+        report: WorkflowCallReport { workflows, issues },
+        failed_count,
+    })
 }
 
 #[cfg(test)]
@@ -478,7 +572,14 @@ jobs:
 
         let result = validate(repo.path());
 
-        assert!(result.issues.is_empty());
+        assert_eq!(result.failed_count, 0);
+        assert!(result.report.issues.is_empty());
+        assert_eq!(result.report.workflows.len(), 1);
+        assert_eq!(result.report.workflows[0].calls.len(), 1);
+        assert_eq!(
+            result.report.workflows[0].calls[0].referenced_outputs,
+            vec!["validator_runtime_tag".to_owned()]
+        );
     }
 
     #[test]
@@ -519,11 +620,12 @@ jobs:
 
         let result = validate(repo.path());
 
-        assert_eq!(result.issues.len(), 2);
-        assert!(result.issues.iter().any(|issue| issue
+        assert_eq!(result.failed_count, 2);
+        assert_eq!(result.report.issues.len(), 2);
+        assert!(result.report.issues.iter().any(|issue| issue
             .message
             .contains("missing required input `environment`")));
-        assert!(result.issues.iter().any(|issue| issue
+        assert!(result.report.issues.iter().any(|issue| issue
             .message
             .contains("missing reusable workflow output `missing_tag`")));
     }
@@ -565,14 +667,15 @@ jobs:
 
         let result = validate(repo.path());
 
-        assert_eq!(result.issues.len(), 3);
-        assert!(result.issues.iter().any(|issue| issue
+        assert_eq!(result.failed_count, 3);
+        assert!(result.report.issues.iter().any(|issue| issue
             .message
             .contains("input `changed` expects a boolean value")));
-        assert!(result.issues.iter().any(|issue| issue
+        assert!(result.report.issues.iter().any(|issue| issue
             .message
             .contains("input `node-version` expects a string value")));
         assert!(result
+            .report
             .issues
             .iter()
             .any(|issue| issue.message.contains("unexpected input `unknown-input`")));
@@ -610,7 +713,8 @@ jobs:
 
         let result = validate(repo.path());
 
-        assert!(result.issues.is_empty());
+        assert_eq!(result.failed_count, 0);
+        assert!(result.report.issues.is_empty());
     }
 
     #[test]
@@ -639,9 +743,58 @@ jobs:
 
         let result = validate(repo.path());
 
-        assert_eq!(result.issues.len(), 1);
-        assert!(result.issues[0]
+        assert_eq!(result.failed_count, 1);
+        assert_eq!(result.report.issues.len(), 1);
+        assert!(result.report.issues[0]
             .message
             .contains("missing a workflow_call contract"));
+    }
+
+    #[test]
+    fn deduplicates_repeated_missing_output_references_per_call() {
+        let repo = tempdir().expect("temp dir should be created");
+        write_workflow(
+            repo.path(),
+            ".github/workflows/reusable-check.yml",
+            r#"on:
+  workflow_call:
+    outputs:
+      image_tag:
+        value: ${{ jobs.build.outputs.image_tag }}
+jobs:
+  build:
+    runs-on: ubuntu-latest
+"#,
+        );
+        write_workflow(
+            repo.path(),
+            ".github/workflows/ci.yml",
+            r#"on:
+  push:
+jobs:
+  build:
+    uses: ./.github/workflows/reusable-check.yml
+  summarize:
+    runs-on: ubuntu-latest
+    needs: [build]
+    steps:
+      - run: echo "${{ needs.build.outputs.missing_tag }}"
+      - run: echo "${{ needs.build.outputs.missing_tag }}"
+"#,
+        );
+
+        let result = validate(repo.path());
+
+        assert_eq!(result.failed_count, 1);
+        assert_eq!(result.report.issues.len(), 1);
+        assert_eq!(result.report.workflows.len(), 1);
+        assert_eq!(
+            result.report.workflows[0].calls[0].referenced_outputs,
+            vec!["missing_tag".to_owned()]
+        );
+        assert_eq!(
+            result.report.workflows[0].calls[0].issues,
+            vec!["references missing reusable workflow output `missing_tag`".to_owned()]
+        );
     }
 }

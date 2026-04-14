@@ -3,6 +3,7 @@ use std::path::Path;
 
 use assert_cmd::Command;
 use predicates::prelude::*;
+use serde_json::Value;
 use tempfile::tempdir;
 
 fn write_workflow(repo_root: &Path, relative_path: &str, contents: &str) {
@@ -119,4 +120,218 @@ jobs:
         .stderr(predicate::str::contains(
             "missing reusable workflow output `missing_tag`",
         ));
+}
+
+#[test]
+fn dry_run_writes_caller_report_without_failing() {
+    let repo = tempdir().expect("temp dir should be created");
+    let report = repo.path().join("callers-report.json");
+
+    write_workflow(
+        repo.path(),
+        ".github/workflows/reusable-build.yml",
+        r#"on:
+  workflow_call:
+    inputs:
+      changed:
+        type: boolean
+        required: true
+    outputs:
+      image_tag:
+        value: ${{ jobs.build.outputs.image_tag }}
+jobs:
+  build:
+    runs-on: ubuntu-latest
+"#,
+    );
+    write_workflow(
+        repo.path(),
+        ".github/workflows/ci.yml",
+        r#"on:
+  pull_request:
+jobs:
+  build:
+    uses: ./.github/workflows/reusable-build.yml
+    with:
+      changed: maybe
+  summarize:
+    runs-on: ubuntu-latest
+    needs: [build]
+    steps:
+      - run: echo "${{ needs.build.outputs.missing_tag }}"
+"#,
+    );
+
+    let mut command = Command::cargo_bin("github-actionspec").expect("binary should exist");
+    command
+        .arg("validate-callers")
+        .arg("--repo")
+        .arg(repo.path())
+        .arg("--report-file")
+        .arg(&report)
+        .arg("--dry-run");
+
+    command.assert().success();
+
+    let report: Value =
+        serde_json::from_str(&fs::read_to_string(report).expect("report should be readable"))
+            .expect("report should be valid json");
+    assert_eq!(report["issues"].as_array().map(Vec::len), Some(2));
+    assert_eq!(report["workflows"].as_array().map(Vec::len), Some(1));
+    assert_eq!(
+        report["workflows"][0]["calls"][0]["referenced_outputs"]
+            .as_array()
+            .map(Vec::len),
+        Some(1)
+    );
+}
+
+#[test]
+fn dry_run_creates_missing_parent_directories_for_caller_report() {
+    let repo = tempdir().expect("temp dir should be created");
+    let report = repo
+        .path()
+        .join("target")
+        .join("actionspec")
+        .join("callers-report.json");
+
+    write_workflow(
+        repo.path(),
+        ".github/workflows/reusable-build.yml",
+        r#"on:
+  workflow_call:
+    inputs:
+      changed:
+        type: boolean
+        required: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+"#,
+    );
+    write_workflow(
+        repo.path(),
+        ".github/workflows/ci.yml",
+        r#"on:
+  pull_request:
+jobs:
+  build:
+    uses: ./.github/workflows/reusable-build.yml
+    with:
+      changed: maybe
+"#,
+    );
+
+    let mut command = Command::cargo_bin("github-actionspec").expect("binary should exist");
+    command
+        .arg("validate-callers")
+        .arg("--repo")
+        .arg(repo.path())
+        .arg("--report-file")
+        .arg(&report)
+        .arg("--dry-run");
+
+    command.assert().success();
+
+    assert!(
+        report.is_file(),
+        "report should be created in nested directories"
+    );
+}
+
+#[test]
+fn dry_run_report_tracks_issues_per_reusable_workflow_call() {
+    let repo = tempdir().expect("temp dir should be created");
+    let report = repo.path().join("callers-report.json");
+
+    write_workflow(
+        repo.path(),
+        ".github/workflows/reusable-build.yml",
+        r#"on:
+  workflow_call:
+    inputs:
+      environment:
+        type: string
+        required: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+"#,
+    );
+    write_workflow(
+        repo.path(),
+        ".github/workflows/reusable-publish.yml",
+        r#"on:
+  workflow_call:
+    outputs:
+      image_tag:
+        value: ${{ jobs.publish.outputs.image_tag }}
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+"#,
+    );
+    write_workflow(
+        repo.path(),
+        ".github/workflows/ci.yml",
+        r#"on:
+  pull_request:
+jobs:
+  build:
+    uses: ./.github/workflows/reusable-build.yml
+  publish:
+    uses: ./.github/workflows/reusable-publish.yml
+  summarize:
+    runs-on: ubuntu-latest
+    needs: [publish]
+    steps:
+      - run: echo "${{ needs.publish.outputs.missing_tag }}"
+"#,
+    );
+
+    let mut command = Command::cargo_bin("github-actionspec").expect("binary should exist");
+    command
+        .arg("validate-callers")
+        .arg("--repo")
+        .arg(repo.path())
+        .arg("--report-file")
+        .arg(&report)
+        .arg("--dry-run");
+
+    command.assert().success();
+
+    let report: Value =
+        serde_json::from_str(&fs::read_to_string(report).expect("report should be readable"))
+            .expect("report should be valid json");
+    assert_eq!(report["issues"].as_array().map(Vec::len), Some(2));
+    assert_eq!(
+        report["workflows"][0]["calls"].as_array().map(Vec::len),
+        Some(2)
+    );
+    assert_eq!(
+        report["workflows"][0]["calls"][0]["job_id"].as_str(),
+        Some("build")
+    );
+    assert_eq!(
+        report["workflows"][0]["calls"][0]["issues"]
+            .as_array()
+            .map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(
+        report["workflows"][0]["calls"][1]["job_id"].as_str(),
+        Some("publish")
+    );
+    assert_eq!(
+        report["workflows"][0]["calls"][1]["referenced_outputs"]
+            .as_array()
+            .map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(
+        report["workflows"][0]["calls"][1]["issues"]
+            .as_array()
+            .map(Vec::len),
+        Some(1)
+    );
 }

@@ -31,6 +31,10 @@ pub enum Command {
         repo: PathBuf,
         #[arg(long = "workflows-dir", default_value = ".github/workflows")]
         workflows_dir: PathBuf,
+        #[arg(long = "report-file")]
+        report_file: Option<PathBuf>,
+        #[arg(long, default_value_t = false)]
+        dry_run: bool,
     },
     ValidateRepo {
         #[arg(long)]
@@ -43,6 +47,8 @@ pub enum Command {
         declarations_dir: PathBuf,
         #[arg(long = "report-file")]
         report_file: Option<PathBuf>,
+        #[arg(long, default_value_t = false)]
+        dry_run: bool,
     },
     Dashboard {
         #[arg(long)]
@@ -163,12 +169,14 @@ mod tests {
                 actual,
                 declarations_dir,
                 report_file,
+                dry_run,
             } => {
                 assert_eq!(repo, PathBuf::from("/tmp/repo"));
                 assert_eq!(workflow, Some("ci.yml".to_owned()));
                 assert_eq!(actual, vec![PathBuf::from("actual.json")]);
                 assert_eq!(declarations_dir, PathBuf::from(".github/actionspec"));
                 assert_eq!(report_file, None);
+                assert!(!dry_run);
             }
             other => panic!("unexpected command: {other:?}"),
         }
@@ -188,9 +196,42 @@ mod tests {
             Command::ValidateCallers {
                 repo,
                 workflows_dir,
+                report_file,
+                dry_run,
             } => {
                 assert_eq!(repo, PathBuf::from("/tmp/repo"));
                 assert_eq!(workflows_dir, PathBuf::from(".github/workflows"));
+                assert_eq!(report_file, None);
+                assert!(!dry_run);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn validate_callers_accepts_report_file_and_dry_run() {
+        let cli = Cli::try_parse_from([
+            "github-actionspec",
+            "validate-callers",
+            "--repo",
+            "/tmp/repo",
+            "--report-file",
+            "callers.json",
+            "--dry-run",
+        ])
+        .expect("cli should parse");
+
+        match cli.command {
+            Command::ValidateCallers {
+                repo,
+                workflows_dir,
+                report_file,
+                dry_run,
+            } => {
+                assert_eq!(repo, PathBuf::from("/tmp/repo"));
+                assert_eq!(workflows_dir, PathBuf::from(".github/workflows"));
+                assert_eq!(report_file, Some(PathBuf::from("callers.json")));
+                assert!(dry_run);
             }
             other => panic!("unexpected command: {other:?}"),
         }
@@ -215,12 +256,14 @@ mod tests {
                 actual,
                 declarations_dir,
                 report_file,
+                dry_run,
             } => {
                 assert_eq!(repo, PathBuf::from("/tmp/repo"));
                 assert_eq!(workflow, None);
                 assert_eq!(actual, vec![PathBuf::from("actual.json")]);
                 assert_eq!(declarations_dir, PathBuf::from(".github/actionspec"));
                 assert_eq!(report_file, None);
+                assert!(!dry_run);
             }
             other => panic!("unexpected command: {other:?}"),
         }

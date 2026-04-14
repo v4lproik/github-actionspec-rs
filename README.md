@@ -43,17 +43,19 @@ just discover
 just coverage-summary
 just pr-create
 just validate-callers /path/to/repo
+just validate-callers-report /path/to/repo target/actionspec/callers-report.json
 just validate-repo /path/to/repo ci.yml /path/to/actual.json
 just validate-repo-report /path/to/repo ci.yml /path/to/payloads target/actionspec/report.json
+just validate-repo-report-dry /path/to/repo ci.yml /path/to/payloads target/actionspec/report.json
 just dashboard-report target/actionspec/report.json target/actionspec/dashboard.md
 ```
 
 Commands:
 
 - `github-actionspec discover --repo <path>`
-- `github-actionspec validate-callers --repo <path>`
+- `github-actionspec validate-callers --repo <path> [--report-file <report.json>] [--dry-run]`
 - `github-actionspec validate --schema <file> --schema <file> --contract <file> --actual <file-or-glob>`
-- `github-actionspec validate-repo --repo <path> [--workflow <name>] --actual <file-dir-or-glob> [--report-file <report.json>]`
+- `github-actionspec validate-repo --repo <path> [--workflow <name>] --actual <file-dir-or-glob> [--report-file <report.json>] [--dry-run]`
 - `github-actionspec dashboard --current <report.json> [--baseline <report.json>] [--output-key <name>] --output <dashboard.md>`
 
 Reusable workflows can also be treated as static contracts. `validate-callers` scans local `uses: ./.github/workflows/*.yml` jobs and checks that callers still match the callee workflow's `workflow_call` inputs and outputs.
@@ -94,12 +96,26 @@ Validate those caller contracts locally with:
 just validate-callers .
 ```
 
+To keep the run non-blocking and inspect the full caller/callee analysis later, write a report in dry mode:
+
+```bash
+just validate-callers-report . target/actionspec/callers-report.json
+```
+
 The command reports:
 
 - missing required reusable-workflow inputs
 - unexpected caller inputs
 - obvious literal type mismatches for `string`, `boolean`, and `number` inputs
 - `needs.<job>.outputs.<name>` references to outputs the called workflow no longer exports
+
+The caller report also preserves the static analysis surface for each reusable workflow job:
+
+- caller workflow path
+- called reusable workflow path
+- provided `with:` inputs
+- referenced `needs.<job>.outputs.*` values
+- issues attached to that call
 
 Matrix-aware contracts can assert both matrix dimensions and job outputs. For example, this contract keeps a `build-ts-service` matrix entry aligned with the emitted `contract_build` output:
 
@@ -200,6 +216,14 @@ github-actionspec validate \
 ```
 
 When you generate a validation report or dashboard, the matrix labels and job outputs are preserved and rendered so the PR comment can show which variant changed and what it emitted, for example `app=build-ts-service, target=linux-amd64` together with `build.contract_build=build-ts-service`.
+
+To analyze workflow execution output without failing the command, run `validate-repo` in dry mode and keep the report:
+
+```bash
+just validate-repo-report-dry . ci.yml .github/actionspec-artifacts target/actionspec/validation-report.json
+```
+
+That still runs the full validation logic and records failures in the report, but exits successfully so you can inspect the produced values locally or upload the artifact from CI.
 
 To keep the dashboard compact, you can choose which outputs appear:
 

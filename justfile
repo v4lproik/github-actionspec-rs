@@ -95,12 +95,19 @@ discover repo=".":
 validate-callers repo=".":
   {{host-runner}} cargo run -- validate-callers --repo {{repo}}
 
+validate-callers-report repo report:
+  {{host-runner}} cargo run -- validate-callers --repo {{repo}} --report-file {{report}} --dry-run
+
 validate-repo repo workflow actual:
   {{host-runner}} cargo run -- validate-repo --repo {{repo}} --workflow {{workflow}} --actual {{actual}}
 
 validate-repo-report repo workflow actual report:
   just docker-build
   {{docker-runner}} cargo run -- validate-repo --repo {{repo}} --workflow {{workflow}} --actual {{actual}} --report-file {{report}}
+
+validate-repo-report-dry repo workflow actual report:
+  just docker-build
+  {{docker-runner}} cargo run -- validate-repo --repo {{repo}} --workflow {{workflow}} --actual {{actual}} --report-file {{report}} --dry-run
 
 dashboard-report current output baseline="" output_keys="":
   just docker-build
