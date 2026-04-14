@@ -12,6 +12,18 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    Capture {
+        #[arg(long)]
+        workflow: String,
+        #[arg(long = "ref")]
+        ref_name: Option<String>,
+        #[arg(long = "input")]
+        input: Vec<String>,
+        #[arg(long = "job-file", required = true)]
+        job_file: Vec<PathBuf>,
+        #[arg(long)]
+        output: PathBuf,
+    },
     Validate {
         #[arg(long = "schema", required = true)]
         schema: Vec<PathBuf>,
@@ -65,6 +77,47 @@ pub enum Command {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_capture_command() {
+        let cli = Cli::try_parse_from([
+            "github-actionspec",
+            "capture",
+            "--workflow",
+            "ci.yml",
+            "--ref",
+            "main",
+            "--input",
+            "run_ci=true",
+            "--job-file",
+            "fragments",
+            "--job-file",
+            "more/*.json",
+            "--output",
+            "actual.json",
+        ])
+        .expect("cli should parse");
+
+        match cli.command {
+            Command::Capture {
+                workflow,
+                ref_name,
+                input,
+                job_file,
+                output,
+            } => {
+                assert_eq!(workflow, "ci.yml");
+                assert_eq!(ref_name, Some("main".to_owned()));
+                assert_eq!(input, vec!["run_ci=true".to_owned()]);
+                assert_eq!(
+                    job_file,
+                    vec![PathBuf::from("fragments"), PathBuf::from("more/*.json")]
+                );
+                assert_eq!(output, PathBuf::from("actual.json"));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
 
     #[test]
     fn parses_validate_command_with_multiple_schemas() {

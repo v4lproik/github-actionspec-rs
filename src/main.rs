@@ -1,4 +1,7 @@
 use clap::Parser;
+use github_actionspec_rs::capture::{
+    capture_workflow_run, write_captured_workflow_run, CaptureWorkflowOptions,
+};
 use github_actionspec_rs::cli::{Cli, Command};
 use github_actionspec_rs::dashboard::{load_validation_report, write_dashboard_markdown};
 use github_actionspec_rs::discovery::discover_declarations;
@@ -20,16 +23,15 @@ fn main() {
     }
 }
 
-fn normalize_actual_inputs(actuals: Vec<PathBuf>) -> Vec<PathBuf> {
+fn normalize_path_inputs(paths: Vec<PathBuf>) -> Vec<PathBuf> {
     let mut normalized = Vec::new();
 
-    for actual in actuals {
-        // The GitHub Action accepts newline-delimited payload inputs, so normalize them before
-        // handing control to the validation layer.
-        let actual = actual.to_string_lossy();
+    for path in paths {
+        // GitHub Action inputs frequently arrive as newline-delimited path lists, so normalize
+        // them once before dispatching to the command-specific logic.
+        let path = path.to_string_lossy();
         normalized.extend(
-            actual
-                .lines()
+            path.lines()
                 .map(str::trim)
                 .filter(|segment| !segment.is_empty())
                 .map(PathBuf::from),
@@ -80,6 +82,21 @@ fn run() -> Result<(), github_actionspec_rs::errors::AppError> {
     let cli = Cli::parse();
 
     match cli.command {
+        Command::Capture {
+            workflow,
+            ref_name,
+            input,
+            job_file,
+            output,
+        } => {
+            let envelope = capture_workflow_run(CaptureWorkflowOptions {
+                workflow,
+                ref_name,
+                inputs: input,
+                job_files: normalize_path_inputs(job_file),
+            })?;
+            write_captured_workflow_run(&envelope, &output)?;
+        }
         Command::Validate {
             schema,
             contract,
@@ -88,7 +105,7 @@ fn run() -> Result<(), github_actionspec_rs::errors::AppError> {
             validate_contract(ValidateContractOptions {
                 schema_paths: schema,
                 contract_path: contract,
-                actual_paths: normalize_actual_inputs(actual),
+                actual_paths: normalize_path_inputs(actual),
                 cwd: None,
                 env: None,
             })?;
@@ -133,7 +150,7 @@ fn run() -> Result<(), github_actionspec_rs::errors::AppError> {
             let result = validate_repo_workflow(ValidateRepoWorkflowOptions {
                 repo_root: repo,
                 workflow,
-                actual_paths: normalize_actual_inputs(actual),
+                actual_paths: normalize_path_inputs(actual),
                 declarations_dir,
                 cwd: None,
                 env: None,
@@ -171,12 +188,12 @@ fn run() -> Result<(), github_actionspec_rs::errors::AppError> {
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_actual_inputs;
+    use super::normalize_path_inputs;
     use std::path::PathBuf;
 
     #[test]
-    fn normalize_actual_inputs_splits_newline_separated_values() {
-        let actuals = normalize_actual_inputs(vec![PathBuf::from(
+    fn normalize_path_inputs_splits_newline_separated_values() {
+        let actuals = normalize_path_inputs(vec![PathBuf::from(
             "fixtures/one.json\n\n fixtures/two.json \n",
         )]);
 

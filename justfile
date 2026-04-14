@@ -92,6 +92,9 @@ pr-create-draft base="main":
 discover repo=".":
   {{host-runner}} cargo run -- discover --repo {{repo}}
 
+capture workflow output job_file ref="":
+  if [ -n "{{ref}}" ]; then {{host-runner}} cargo run -- capture --workflow {{workflow}} --ref {{ref}} --job-file {{job_file}} --output {{output}}; else {{host-runner}} cargo run -- capture --workflow {{workflow}} --job-file {{job_file}} --output {{output}}; fi
+
 validate-callers repo=".":
   {{host-runner}} cargo run -- validate-callers --repo {{repo}}
 

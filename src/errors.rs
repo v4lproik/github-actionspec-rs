@@ -39,6 +39,28 @@ pub enum AppError {
     #[error("No files matched actual glob pattern: {0}")]
     NoActualGlobMatches(String),
 
+    #[error("At least one job fragment path is required.")]
+    MissingCaptureJobFiles,
+
+    #[error("No readable JSON job fragment files were found under directory: {0}")]
+    NoCaptureJobFilesFound(PathBuf),
+
+    #[error("No files matched job fragment glob pattern: {0}")]
+    NoCaptureJobGlobMatches(String),
+
+    #[error("Job fragment is missing a non-empty `job` field: {0}")]
+    MissingCaptureJobName(PathBuf),
+
+    #[error("Duplicate captured job `{job}` found in {first} and {second}")]
+    DuplicateCaptureJob {
+        job: String,
+        first: PathBuf,
+        second: PathBuf,
+    },
+
+    #[error("Invalid capture input `{0}`. Expected KEY=VALUE.")]
+    InvalidCaptureInput(String),
+
     #[error("Reusable workflow validation failed with {failed} issue(s).\n{details}")]
     WorkflowCallerValidationFailures { failed: usize, details: String },
 

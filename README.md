@@ -22,6 +22,7 @@ just lint
 just test
 just ci
 just discover
+just capture ci.yml .github/actionspec-artifacts/ci-main.json .github/actionspec-fragments
 just coverage
 just coverage-summary
 ```
@@ -40,6 +41,7 @@ just lint
 just ci
 just test
 just discover
+just capture ci.yml .github/actionspec-artifacts/ci-main.json .github/actionspec-fragments
 just coverage-summary
 just pr-create
 just validate-callers /path/to/repo
@@ -52,11 +54,71 @@ just dashboard-report target/actionspec/report.json target/actionspec/dashboard.
 
 Commands:
 
+- `github-actionspec capture --workflow <name> --job-file <file-dir-or-glob> --output <actual.json>`
 - `github-actionspec discover --repo <path>`
 - `github-actionspec validate-callers --repo <path> [--report-file <report.json>] [--dry-run]`
 - `github-actionspec validate --schema <file> --schema <file> --contract <file> --actual <file-or-glob>`
 - `github-actionspec validate-repo --repo <path> [--workflow <name>] --actual <file-dir-or-glob> [--report-file <report.json>] [--dry-run]`
 - `github-actionspec dashboard --current <report.json> [--baseline <report.json>] [--output-key <name>] --output <dashboard.md>`
+
+## Capture Payloads
+
+The easiest way to make workflow validation broadly usable is to standardize the payload generation step.
+
+`capture` merges one JSON fragment per job into the normalized `run` payload that `validate-repo` already understands. A fragment looks like:
+
+```json
+{
+  "job": "build",
+  "result": "success",
+  "matrix": {
+    "app": "build-ts-service",
+    "target": "linux-amd64"
+  },
+  "outputs": {
+    "contract_build": "build-ts-service"
+  },
+  "steps": {
+    "compile": {
+      "conclusion": "success",
+      "outputs": {
+        "digest": "sha256:abc123"
+      }
+    }
+  }
+}
+```
+
+Capture a full workflow payload from a directory of fragments with:
+
+```bash
+just capture ci.yml .github/actionspec-artifacts/ci-main.json .github/actionspec-fragments
+```
+
+The CLI also supports repeated workflow inputs and explicit refs:
+
+```bash
+github-actionspec capture \
+  --workflow ci.yml \
+  --ref main \
+  --input run_ci=true \
+  --input run_pages=false \
+  --job-file .github/actionspec-fragments \
+  --output .github/actionspec-artifacts/ci-main.json
+```
+
+Once captured, validate the resulting payload with the existing repo flow:
+
+```bash
+just validate-repo . ci.yml .github/actionspec-artifacts/ci-main.json
+```
+
+In GitHub Actions, the intended pattern is:
+
+- each job writes one fragment JSON file
+- the final aggregation job downloads those fragment artifacts
+- the aggregation job runs `capture`
+- the same job runs `validate-repo` and uploads the report or dashboard artifact
 
 Reusable workflows can also be treated as static contracts. `validate-callers` scans local `uses: ./.github/workflows/*.yml` jobs and checks that callers still match the callee workflow's `workflow_call` inputs and outputs.
 
