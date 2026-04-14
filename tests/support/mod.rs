@@ -27,29 +27,44 @@ pub fn write_actual(path: &Path, workflow: &str) {
     .unwrap();
 }
 
-pub fn write_validation_fixture(
+pub fn write_json_validation_fixture(
     temp_root: &Path,
-    workflow: &str,
+    schema_contents: &str,
+    contract_contents: &str,
+    actual_contents: &serde_json::Value,
 ) -> (std::path::PathBuf, std::path::PathBuf, std::path::PathBuf) {
     let schema = temp_root.join("schema.cue");
     let contract = temp_root.join("contract.cue");
     let actual = temp_root.join("actual.json");
 
-    std::fs::write(
-        &schema,
-        "package actionspec\n#WorkflowRun: {workflow: string, jobs: [string]: {result: string}}\n",
-    )
-    .unwrap();
-    std::fs::write(
-        &contract,
-        format!(
-            "package actionspec\nrun: #WorkflowRun & {{workflow: \"{workflow}\", jobs: {{build: {{result: \"success\"}}}}}}\n"
-        ),
-    )
-    .unwrap();
-    write_actual(&actual, workflow);
+    std::fs::write(&schema, schema_contents).unwrap();
+    std::fs::write(&contract, contract_contents).unwrap();
+    std::fs::write(&actual, serde_json::to_string(actual_contents).unwrap()).unwrap();
 
     (schema, contract, actual)
+}
+
+pub fn write_validation_fixture(
+    temp_root: &Path,
+    workflow: &str,
+) -> (std::path::PathBuf, std::path::PathBuf, std::path::PathBuf) {
+    write_json_validation_fixture(
+        temp_root,
+        "package actionspec\n#WorkflowRun: {workflow: string, jobs: [string]: {result: string}}\n",
+        &format!(
+            "package actionspec\nrun: #WorkflowRun & {{workflow: \"{workflow}\", jobs: {{build: {{result: \"success\"}}}}}}\n"
+        ),
+        &serde_json::json!({
+            "run": {
+                "workflow": workflow,
+                "jobs": {
+                    "sample": {
+                        "result": "success",
+                    }
+                }
+            }
+        }),
+    )
 }
 
 pub fn write_matrix_output_validation_fixture(
@@ -58,25 +73,13 @@ pub fn write_matrix_output_validation_fixture(
     app: &str,
     contract_build: &str,
 ) -> (std::path::PathBuf, std::path::PathBuf, std::path::PathBuf) {
-    let schema = temp_root.join("schema.cue");
-    let contract = temp_root.join("contract.cue");
-    let actual = temp_root.join("actual.json");
-
-    std::fs::write(
-        &schema,
+    write_json_validation_fixture(
+        temp_root,
         "package actionspec\n#WorkflowRun: {\n  workflow: string\n  jobs: [string]: {\n    result: string\n    outputs?: [string]: string\n    matrix?: [string]: string | bool | number | null\n  }\n}\n",
-    )
-    .unwrap();
-    std::fs::write(
-        &contract,
-        format!(
+        &format!(
             "package actionspec\nrun: #WorkflowRun & {{\n  workflow: \"{workflow}\"\n  jobs: {{\n    build: {{\n      result: \"success\"\n      matrix: {{\n        app: \"{app}\"\n      }}\n      outputs: {{\n        contract_build: \"{contract_build}\"\n      }}\n    }}\n  }}\n}}\n"
         ),
-    )
-    .unwrap();
-    std::fs::write(
-        &actual,
-        serde_json::to_string(&serde_json::json!({
+        &serde_json::json!({
             "run": {
                 "workflow": workflow,
                 "jobs": {
@@ -91,12 +94,8 @@ pub fn write_matrix_output_validation_fixture(
                     }
                 }
             }
-        }))
-        .unwrap(),
+        }),
     )
-    .unwrap();
-
-    (schema, contract, actual)
 }
 
 pub fn install_fake_cue(temp_dir: &TempDir, mode: &str) -> HashMap<String, String> {
