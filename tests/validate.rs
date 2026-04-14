@@ -6,6 +6,10 @@ use assert_cmd::Command;
 use github_actionspec_rs::validate::{validate_contract, ValidateContractOptions};
 use tempfile::tempdir;
 
+fn matrix_output_schema() -> &'static str {
+    "package actionspec\n#WorkflowRun: {\n  workflow: string\n  jobs: [string]: {\n    result: string\n    outputs?: [string]: string\n    matrix?: [string]: string | bool | number | null\n  }\n}\n"
+}
+
 fn write_cross_job_fixture(
     temp_root: &Path,
     build_tag: &str,
@@ -271,6 +275,318 @@ exit 1
     assert!(error
         .to_string()
         .contains("matrix app build-ts-service must match outputs.contract_build contract-build",));
+}
+
+#[test]
+fn validates_contract_with_multiple_jobs_and_matrix_axes() {
+    let temp = tempdir().unwrap();
+    let (schema, contract, actual) = support::write_json_validation_fixture(
+        temp.path(),
+        matrix_output_schema(),
+        r#"package actionspec
+run: #WorkflowRun & {
+  workflow: "build.yml"
+  jobs: {
+    build: {
+      result: "success"
+      matrix: {
+        app: "build-ts-service"
+        target: "linux-amd64"
+        shard: 2
+        release: true
+      }
+      outputs: {
+        contract_build: "build-ts-service"
+      }
+    }
+    publish: {
+      result: "success"
+      outputs: {
+        image_tag: "v1.2.3"
+      }
+    }
+  }
+}
+"#,
+        &serde_json::json!({
+            "run": {
+                "workflow": "build.yml",
+                "jobs": {
+                    "build": {
+                        "result": "success",
+                        "matrix": {
+                            "app": "build-ts-service",
+                            "target": "linux-amd64",
+                            "shard": 2,
+                            "release": true,
+                        },
+                        "outputs": {
+                            "contract_build": "build-ts-service",
+                        },
+                    },
+                    "publish": {
+                        "result": "success",
+                        "outputs": {
+                            "image_tag": "v1.2.3",
+                        },
+                    },
+                }
+            }
+        }),
+    );
+
+    let env = support::install_fake_cue_script(
+        temp.path(),
+        r#"#!/bin/sh
+set -eu
+if [ "$1" = "version" ]; then
+  exit 0
+fi
+if [ "$1" = "vet" ]; then
+  last=""
+  contract=""
+  for arg in "$@"; do
+    contract="$last"
+    last="$arg"
+  done
+
+  grep -q 'target: "linux-amd64"' "$contract"
+  grep -q 'shard: 2' "$contract"
+  grep -q 'release: true' "$contract"
+  grep -q 'image_tag: "v1.2.3"' "$contract"
+  grep -q '"target":"linux-amd64"' "$last"
+  grep -q '"shard":2' "$last"
+  grep -q '"release":true' "$last"
+  grep -q '"image_tag":"v1.2.3"' "$last"
+  exit 0
+fi
+exit 1
+"#,
+    );
+
+    let result = validate_contract(ValidateContractOptions {
+        schema_paths: vec![schema],
+        contract_path: contract,
+        actual_paths: vec![actual],
+        cwd: Some(temp.path().to_path_buf()),
+        env: Some(env),
+    });
+
+    assert!(result.is_ok());
+}
+
+#[test]
+fn validates_contract_when_optional_outputs_are_omitted() {
+    let temp = tempdir().unwrap();
+    let (schema, contract, actual) = support::write_json_validation_fixture(
+        temp.path(),
+        matrix_output_schema(),
+        r#"package actionspec
+run: #WorkflowRun & {
+  workflow: "build.yml"
+  jobs: {
+    build: {
+      result: "success"
+      matrix: {
+        app: "build-ts-service"
+      }
+    }
+  }
+}
+"#,
+        &serde_json::json!({
+            "run": {
+                "workflow": "build.yml",
+                "jobs": {
+                    "build": {
+                        "result": "success",
+                        "matrix": {
+                            "app": "build-ts-service",
+                        },
+                    },
+                }
+            }
+        }),
+    );
+
+    let env = support::install_fake_cue_script(
+        temp.path(),
+        r#"#!/bin/sh
+set -eu
+if [ "$1" = "version" ]; then
+  exit 0
+fi
+if [ "$1" = "vet" ]; then
+  last=""
+  for arg in "$@"; do
+    last="$arg"
+  done
+
+  grep -q '"app":"build-ts-service"' "$last"
+  if grep -q '"outputs"' "$last"; then
+    echo "outputs should be omitted for this payload" >&2
+    exit 9
+  fi
+  exit 0
+fi
+exit 1
+"#,
+    );
+
+    let result = validate_contract(ValidateContractOptions {
+        schema_paths: vec![schema],
+        contract_path: contract,
+        actual_paths: vec![actual],
+        cwd: Some(temp.path().to_path_buf()),
+        env: Some(env),
+    });
+
+    assert!(result.is_ok());
+}
+
+#[test]
+fn fails_when_required_matrix_key_is_missing() {
+    let temp = tempdir().unwrap();
+    let (schema, contract, actual) = support::write_json_validation_fixture(
+        temp.path(),
+        matrix_output_schema(),
+        r#"package actionspec
+run: #WorkflowRun & {
+  workflow: "build.yml"
+  jobs: {
+    build: {
+      result: "success"
+      matrix: {
+        app: "build-ts-service"
+        target: "linux-amd64"
+      }
+    }
+  }
+}
+"#,
+        &serde_json::json!({
+            "run": {
+                "workflow": "build.yml",
+                "jobs": {
+                    "build": {
+                        "result": "success",
+                        "matrix": {
+                            "app": "build-ts-service",
+                        },
+                    },
+                }
+            }
+        }),
+    );
+
+    let env = support::install_fake_cue_script(
+        temp.path(),
+        r#"#!/bin/sh
+set -eu
+if [ "$1" = "version" ]; then
+  exit 0
+fi
+if [ "$1" = "vet" ]; then
+  last=""
+  contract=""
+  for arg in "$@"; do
+    contract="$last"
+    last="$arg"
+  done
+
+  if grep -q 'target: "linux-amd64"' "$contract" && ! grep -q '"target":"linux-amd64"' "$last"; then
+    echo "missing matrix.target for jobs.build" >&2
+    exit 9
+  fi
+  exit 0
+fi
+exit 1
+"#,
+    );
+
+    let error = validate_contract(ValidateContractOptions {
+        schema_paths: vec![schema],
+        contract_path: contract,
+        actual_paths: vec![actual],
+        cwd: Some(temp.path().to_path_buf()),
+        env: Some(env),
+    })
+    .unwrap_err();
+
+    assert!(error
+        .to_string()
+        .contains("missing matrix.target for jobs.build"));
+}
+
+#[test]
+fn fails_when_required_output_key_is_missing() {
+    let temp = tempdir().unwrap();
+    let (schema, contract, actual) = support::write_json_validation_fixture(
+        temp.path(),
+        matrix_output_schema(),
+        r#"package actionspec
+run: #WorkflowRun & {
+  workflow: "build.yml"
+  jobs: {
+    build: {
+      result: "success"
+      outputs: {
+        contract_build: "build-ts-service"
+      }
+    }
+  }
+}
+"#,
+        &serde_json::json!({
+            "run": {
+                "workflow": "build.yml",
+                "jobs": {
+                    "build": {
+                        "result": "success",
+                        "outputs": {},
+                    },
+                }
+            }
+        }),
+    );
+
+    let env = support::install_fake_cue_script(
+        temp.path(),
+        r#"#!/bin/sh
+set -eu
+if [ "$1" = "version" ]; then
+  exit 0
+fi
+if [ "$1" = "vet" ]; then
+  last=""
+  contract=""
+  for arg in "$@"; do
+    contract="$last"
+    last="$arg"
+  done
+
+  if grep -q 'contract_build: "build-ts-service"' "$contract" && ! grep -q '"contract_build":"build-ts-service"' "$last"; then
+    echo "missing outputs.contract_build for jobs.build" >&2
+    exit 9
+  fi
+  exit 0
+fi
+exit 1
+"#,
+    );
+
+    let error = validate_contract(ValidateContractOptions {
+        schema_paths: vec![schema],
+        contract_path: contract,
+        actual_paths: vec![actual],
+        cwd: Some(temp.path().to_path_buf()),
+        env: Some(env),
+    })
+    .unwrap_err();
+
+    assert!(error
+        .to_string()
+        .contains("missing outputs.contract_build for jobs.build"));
 }
 
 #[test]
