@@ -38,6 +38,12 @@ pub struct ValidateRepoWorkflowResult {
     pub failed_count: usize,
 }
 
+#[derive(Debug, Clone)]
+struct LoadedActual {
+    actual_path: PathBuf,
+    envelope: WorkflowRunEnvelope,
+}
+
 fn assert_readable(path: &Path) -> Result<(), AppError> {
     if !path.is_file() {
         return Err(AppError::MissingReadableFile(path.to_path_buf()));
@@ -89,7 +95,9 @@ fn resolve_actual_paths(paths: &[PathBuf]) -> Result<Vec<PathBuf>, AppError> {
         return Err(AppError::MissingActualPaths);
     }
 
-    let mut resolved_paths = Vec::new();
+    // Resolve every supported input form into a deterministic, de-duplicated file list so
+    // repeated explicit paths or overlapping globs do not trigger duplicate validations.
+    let mut resolved_paths = BTreeSet::new();
     for path in paths {
         if path.is_dir() {
             resolved_paths.extend(collect_directory_actuals(path)?);
@@ -102,23 +110,21 @@ fn resolve_actual_paths(paths: &[PathBuf]) -> Result<Vec<PathBuf>, AppError> {
         }
 
         assert_readable(path)?;
-        resolved_paths.push(path.to_path_buf());
+        resolved_paths.insert(path.to_path_buf());
     }
 
     if resolved_paths.is_empty() {
         return Err(AppError::MissingActualPaths);
     }
 
-    Ok(resolved_paths)
+    Ok(resolved_paths.into_iter().collect())
 }
 
-fn infer_workflow_from_actuals(paths: &[PathBuf]) -> Result<String, AppError> {
+fn infer_workflow_from_actuals(actuals: &[LoadedActual]) -> Result<String, AppError> {
     let mut workflows = BTreeSet::new();
 
-    for path in paths {
-        let contents = fs::read_to_string(path)?;
-        let envelope: WorkflowRunEnvelope = serde_json::from_str(&contents)?;
-        workflows.insert(envelope.run.workflow);
+    for actual in actuals {
+        workflows.insert(actual.envelope.run.workflow.clone());
     }
 
     if workflows.len() == 1 {
@@ -136,6 +142,21 @@ fn infer_workflow_from_actuals(paths: &[PathBuf]) -> Result<String, AppError> {
 fn read_workflow_run(path: &Path) -> Result<WorkflowRunEnvelope, AppError> {
     let contents = fs::read_to_string(path)?;
     Ok(serde_json::from_str(&contents)?)
+}
+
+fn load_actuals(paths: &[PathBuf]) -> Result<Vec<LoadedActual>, AppError> {
+    resolve_actual_paths(paths)?
+        .into_iter()
+        .map(|actual_path| {
+            // Parse each payload once so workflow inference and reporting cannot diverge because
+            // the file changed between repeated reads inside the same validation run.
+            let envelope = read_workflow_run(&actual_path)?;
+            Ok(LoadedActual {
+                actual_path,
+                envelope,
+            })
+        })
+        .collect()
 }
 
 fn apply_env(command: &mut Command, env: &Option<HashMap<String, String>>) {
@@ -254,21 +275,30 @@ pub fn validate_repo_workflow(
         env,
     } = options;
 
-    let actual_paths = resolve_actual_paths(&actual_paths)?;
+    let mut loaded_actuals = None;
     let workflow = match workflow {
         Some(workflow) if !workflow.trim().is_empty() => workflow,
-        _ => infer_workflow_from_actuals(&actual_paths)?,
+        _ => {
+            let actuals = load_actuals(&actual_paths)?;
+            let inferred_workflow = infer_workflow_from_actuals(&actuals)?;
+            loaded_actuals = Some(actuals);
+            inferred_workflow
+        }
     };
 
     let declaration = find_declaration(&repo_root, &workflow, Some(&declarations_dir))?;
     assert_cue_available(&env)?;
+    let actuals = match loaded_actuals {
+        Some(actuals) => actuals,
+        None => load_actuals(&actual_paths)?,
+    };
 
     let mut actual_reports = Vec::new();
     let mut failed = 0;
 
-    for actual_path in actual_paths {
-        let envelope = read_workflow_run(&actual_path)?;
-        let outputs = envelope
+    for actual in actuals {
+        let outputs = actual
+            .envelope
             .run
             .jobs
             .iter()
@@ -279,21 +309,23 @@ pub fn validate_repo_workflow(
                     .map(|outputs| (job_name.clone(), outputs.clone()))
             })
             .collect::<std::collections::BTreeMap<_, _>>();
-        let matrix = envelope
+        let matrix = actual
+            .envelope
             .run
             .jobs
             .values()
             .find_map(|job| job.matrix.clone());
-        let jobs = envelope
+        let jobs = actual
+            .envelope
             .run
             .jobs
-            .into_iter()
-            .map(|(job_name, job)| (job_name, job.result))
+            .iter()
+            .map(|(job_name, job)| (job_name.clone(), job.result.clone()))
             .collect();
         let cue_result = run_cue_vet(
             &[workflow_schema_path(), declaration_schema_path()],
             &declaration.declaration_path,
-            &actual_path,
+            &actual.actual_path,
             cwd.as_deref(),
             &env,
         );
@@ -306,9 +338,9 @@ pub fn validate_repo_workflow(
         };
 
         actual_reports.push(ActualValidationReport {
-            actual_path,
-            workflow: envelope.run.workflow,
-            ref_name: envelope.run.ref_name,
+            actual_path: actual.actual_path,
+            workflow: actual.envelope.run.workflow,
+            ref_name: actual.envelope.run.ref_name,
             status,
             jobs,
             matrix,
@@ -500,6 +532,50 @@ mod tests {
     }
 
     #[test]
+    fn validate_contract_deduplicates_duplicate_actual_paths() {
+        let temp = tempdir().expect("temp dir should be created");
+        let schema = temp.path().join("schema.cue");
+        let contract = temp.path().join("contract.cue");
+        let actual = temp.path().join("actual.json");
+        let calls = temp.path().join("cue-calls.log");
+        fs::write(
+            &schema,
+            "package actionspec\n#WorkflowRun: {workflow: string, jobs: [string]: {result: string}}\n",
+        )
+        .expect("schema should be written");
+        fs::write(
+            &contract,
+            "package actionspec\nrun: #WorkflowRun & {workflow: \"demo\", jobs: {build: {result: \"success\"}}}\n",
+        )
+        .expect("contract should be written");
+        fs::write(
+            &actual,
+            "{\"run\":{\"workflow\":\"demo\",\"jobs\":{\"build\":{\"result\":\"success\"}}}}",
+        )
+        .expect("actual should be written");
+
+        let env = install_fake_cue(
+            temp.path(),
+            &format!(
+                "#!/bin/sh\nif [ \"$1\" = \"version\" ]; then\n  exit 0\nfi\nif [ \"$1\" = \"vet\" ]; then\n  last=\"\"\n  for arg in \"$@\"; do\n    last=\"$arg\"\n  done\n  printf '%s\\n' \"$last\" >> \"{}\"\n  exit 0\nfi\nexit 1\n",
+                calls.display()
+            ),
+        );
+
+        let result = validate_contract(ValidateContractOptions {
+            schema_paths: vec![schema],
+            contract_path: contract,
+            actual_paths: vec![actual.clone(), actual],
+            cwd: Some(temp.path().to_path_buf()),
+            env: Some(env),
+        });
+
+        assert!(result.is_ok());
+        let call_log = fs::read_to_string(calls).expect("call log should exist");
+        assert_eq!(call_log.lines().count(), 1);
+    }
+
+    #[test]
     fn validate_repo_workflow_infers_workflow_from_single_actual() {
         let temp = tempdir().expect("temp dir should be created");
         let declaration_dir = temp.path().join(".github/actionspec/ci");
@@ -526,6 +602,44 @@ mod tests {
             repo_root: temp.path().to_path_buf(),
             workflow: None,
             actual_paths: vec![actual],
+            declarations_dir: PathBuf::from(".github/actionspec"),
+            report_file: None,
+            cwd: None,
+            env: Some(env),
+        })
+        .expect("validation should succeed");
+
+        assert_eq!(result.failed_count, 0);
+        assert_eq!(result.report.actuals.len(), 1);
+    }
+
+    #[test]
+    fn validate_repo_workflow_deduplicates_duplicate_actual_inputs() {
+        let temp = tempdir().expect("temp dir should be created");
+        let declaration_dir = temp.path().join(".github/actionspec/ci");
+        fs::create_dir_all(&declaration_dir).expect("declaration dir should be created");
+        fs::write(
+            declaration_dir.join("main.cue"),
+            "package actionspec\n\nworkflow: \"ci.yml\"\n\nrun: #Declaration.run & {\n  workflow: workflow\n  jobs: {\n    sample: {\n      result: \"success\"\n    }\n  }\n}\n",
+        )
+        .expect("declaration should be written");
+
+        let actual = temp.path().join("actual.json");
+        fs::write(
+            &actual,
+            "{\"run\":{\"workflow\":\"ci.yml\",\"jobs\":{\"sample\":{\"result\":\"success\"}}}}",
+        )
+        .expect("actual should be written");
+
+        let env = install_fake_cue(
+            temp.path(),
+            "#!/bin/sh\nif [ \"$1\" = \"version\" ]; then\n  exit 0\nfi\nif [ \"$1\" = \"vet\" ]; then\n  exit 0\nfi\nexit 1\n",
+        );
+
+        let result = validate_repo_workflow(ValidateRepoWorkflowOptions {
+            repo_root: temp.path().to_path_buf(),
+            workflow: None,
+            actual_paths: vec![actual.clone(), actual],
             declarations_dir: PathBuf::from(".github/actionspec"),
             report_file: None,
             cwd: None,

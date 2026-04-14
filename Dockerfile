@@ -19,7 +19,7 @@ RUN cargo build --locked --release
 
 FROM golang:1.24-bookworm AS cue-builder
 
-ARG CUE_VERSION=v0.15.0
+ARG CUE_VERSION
 RUN GOBIN=/cue-bin go install cuelang.org/go/cmd/cue@${CUE_VERSION}
 
 FROM debian:bookworm-slim AS runtime
