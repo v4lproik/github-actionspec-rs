@@ -21,6 +21,10 @@ fn actual(path: &str, status: ValidationStatus, jobs: &[(&str, &str)]) -> Actual
             "app".to_string(),
             Value::String("build-ts-service".to_owned()),
         )])),
+        outputs: Some(BTreeMap::from([(
+            "build".to_string(),
+            BTreeMap::from([("contract_build".to_string(), "build-ts-service".to_string())]),
+        )])),
         error: None,
     }
 }
@@ -76,6 +80,7 @@ fn dashboard_cli_writes_markdown_with_diff() {
     let markdown = std::fs::read_to_string(output).unwrap();
     assert!(markdown.contains("Validation Matrix"));
     assert!(markdown.contains("app=build-ts-service"));
+    assert!(markdown.contains("build.contract_build=build-ts-service"));
     assert!(markdown.contains("status Failed->Passed"));
     assert!(markdown.contains("build skipped->success"));
 }

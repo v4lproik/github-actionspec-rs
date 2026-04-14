@@ -208,7 +208,7 @@ fn report_file_preserves_matrix_metadata() {
     let actual = repo.path().join("build-ts-service.json");
     std::fs::write(
         &actual,
-        r#"{"run":{"workflow":"build.yml","jobs":{"build":{"result":"success","matrix":{"app":"build-ts-service","target":"linux-amd64"}}}}}"#,
+        r#"{"run":{"workflow":"build.yml","jobs":{"build":{"result":"success","matrix":{"app":"build-ts-service","target":"linux-amd64"},"outputs":{"contract_build":"build-ts-service","artifact_name":"build-ts-service-linux-amd64"}}}}}"#,
     )
     .unwrap();
     let report = repo.path().join("validation-report.json");
@@ -244,5 +244,18 @@ fn report_file_preserves_matrix_metadata() {
                 Value::String("linux-amd64".to_owned()),
             ),
         ]))
+    );
+    assert_eq!(
+        report.actuals[0].outputs,
+        Some(std::collections::BTreeMap::from([(
+            "build".to_string(),
+            std::collections::BTreeMap::from([
+                (
+                    "artifact_name".to_string(),
+                    "build-ts-service-linux-amd64".to_string(),
+                ),
+                ("contract_build".to_string(), "build-ts-service".to_string(),),
+            ]),
+        )]))
     );
 }

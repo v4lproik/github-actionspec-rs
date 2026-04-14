@@ -64,6 +64,14 @@ fn compare_actual(
         ));
     }
 
+    if current.outputs != baseline.outputs {
+        changes.push(format!(
+            "outputs {}->{}",
+            render_outputs_label(baseline.outputs.as_ref()),
+            render_outputs_label(current.outputs.as_ref())
+        ));
+    }
+
     let job_names = baseline
         .jobs
         .keys()
@@ -110,6 +118,26 @@ fn render_matrix_label(matrix: Option<&BTreeMap<String, Value>>) -> String {
     matrix
         .iter()
         .map(|(key, value)| format!("{key}={}", render_matrix_value(value)))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn render_outputs_label(outputs: Option<&BTreeMap<String, BTreeMap<String, String>>>) -> String {
+    let Some(outputs) = outputs else {
+        return "-".to_owned();
+    };
+
+    if outputs.is_empty() {
+        return "-".to_owned();
+    }
+
+    outputs
+        .iter()
+        .flat_map(|(job_name, job_outputs)| {
+            job_outputs
+                .iter()
+                .map(move |(key, value)| format!("{job_name}.{key}={value}"))
+        })
         .collect::<Vec<_>>()
         .join(", ")
 }
@@ -165,13 +193,13 @@ pub fn render_dashboard_markdown(
     }
 
     let _ = writeln!(markdown);
-    let _ = write!(markdown, "| Payload | Ref | Matrix | Status |");
+    let _ = write!(markdown, "| Payload | Ref | Matrix | Outputs | Status |");
     for job_name in &job_names {
         let _ = write!(markdown, " {} |", job_name);
     }
     let _ = writeln!(markdown, " Delta |");
 
-    let _ = write!(markdown, "| --- | --- | --- | --- |");
+    let _ = write!(markdown, "| --- | --- | --- | --- | --- |");
     for _ in &job_names {
         let _ = write!(markdown, " --- |");
     }
@@ -188,10 +216,11 @@ pub fn render_dashboard_markdown(
     for actual in &current.actuals {
         let _ = write!(
             markdown,
-            "| `{}` | `{}` | `{}` | `{:?}` |",
+            "| `{}` | `{}` | `{}` | `{}` | `{:?}` |",
             actual.actual_path.display(),
             actual.ref_name.as_deref().unwrap_or("-"),
             render_matrix_label(actual.matrix.as_ref()),
+            render_outputs_label(actual.outputs.as_ref()),
             actual.status
         );
         for job_name in &job_names {
@@ -245,11 +274,15 @@ mod tests {
 
     use super::*;
 
+    type MatrixEntries<'a> = &'a [(&'a str, Value)];
+    type OutputEntries<'a> = &'a [(&'a str, &'a [(&'a str, &'a str)])];
+
     fn actual(
         path: &str,
         ref_name: &str,
         status: ValidationStatus,
-        matrix: Option<&[(&str, Value)]>,
+        matrix: Option<MatrixEntries<'_>>,
+        outputs: Option<OutputEntries<'_>>,
         jobs: &[(&str, &str)],
     ) -> ActualValidationReport {
         ActualValidationReport {
@@ -267,6 +300,19 @@ mod tests {
                     .map(|(key, value)| (key.to_string(), value.clone()))
                     .collect()
             }),
+            outputs: outputs.map(|jobs| {
+                jobs.iter()
+                    .map(|(job_name, output_entries)| {
+                        (
+                            job_name.to_string(),
+                            output_entries
+                                .iter()
+                                .map(|(key, value)| (key.to_string(), value.to_string()))
+                                .collect(),
+                        )
+                    })
+                    .collect()
+            }),
             error: None,
         }
     }
@@ -282,6 +328,7 @@ mod tests {
                     "main",
                     ValidationStatus::Passed,
                     Some(&[("app", Value::String("build-ts-service".to_owned()))]),
+                    Some(&[("build", &[("contract_build", "build-ts-service")])]),
                     &[("build", "success"), ("pages", "skipped")],
                 ),
                 actual(
@@ -289,6 +336,7 @@ mod tests {
                     "main",
                     ValidationStatus::Failed,
                     Some(&[("app", Value::String("build-ts-service".to_owned()))]),
+                    Some(&[("build", &[("contract_build", "build-ts-service")])]),
                     &[("build", "skipped"), ("pages", "skipped")],
                 ),
             ],
@@ -302,12 +350,14 @@ mod tests {
                     "main",
                     ValidationStatus::Passed,
                     Some(&[("app", Value::String("build-rust-service".to_owned()))]),
+                    Some(&[("build", &[("contract_build", "build-rust-service")])]),
                     &[("build", "success"), ("pages", "success")],
                 ),
                 actual(
                     "tests/fixtures/ci/ci-removed.json",
                     "main",
                     ValidationStatus::Passed,
+                    None,
                     None,
                     &[("build", "success")],
                 ),
@@ -317,14 +367,19 @@ mod tests {
         let markdown = render_dashboard_markdown(&current, Some(&baseline));
 
         assert!(markdown.contains("Validation Matrix"));
-        assert!(markdown.contains("| Payload | Ref | Matrix | Status | build | pages | Delta |"));
+        assert!(markdown
+            .contains("| Payload | Ref | Matrix | Outputs | Status | build | pages | Delta |"));
         assert!(markdown.contains("app=build-ts-service"));
+        assert!(markdown.contains("build.contract_build=build-ts-service"));
         assert!(markdown.contains("matrix app=build-rust-service->app=build-ts-service"));
+        assert!(markdown.contains(
+            "outputs build.contract_build=build-rust-service->build.contract_build=build-ts-service"
+        ));
         assert!(markdown.contains("ci-main-success.json"));
         assert!(markdown.contains("pages success->skipped"));
         assert!(
             markdown.contains(
-                "| `tests/fixtures/ci/ci-build-skipped.json` | `main` | `app=build-ts-service` | `Failed` |"
+                "| `tests/fixtures/ci/ci-build-skipped.json` | `main` | `app=build-ts-service` | `build.contract_build=build-ts-service` | `Failed` |"
             )
         );
         assert!(markdown.contains(" new |"));

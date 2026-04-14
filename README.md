@@ -125,7 +125,7 @@ github-actionspec validate \
   --actual .github/actionspec-artifacts/build-ts-service.json
 ```
 
-When you generate a validation report or dashboard, the matrix labels are preserved and rendered so the PR comment can show which variant changed, for example `app=build-ts-service, target=linux-amd64`.
+When you generate a validation report or dashboard, the matrix labels and job outputs are preserved and rendered so the PR comment can show which variant changed and what it emitted, for example `app=build-ts-service, target=linux-amd64` together with `build.contract_build=build-ts-service`.
 
 ## GitHub Action
 
