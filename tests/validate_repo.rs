@@ -3,6 +3,7 @@ mod support;
 use assert_cmd::Command;
 use github_actionspec_rs::types::ValidationReport;
 use predicates::prelude::*;
+use serde_json::Value;
 use tempfile::tempdir;
 
 #[test]
@@ -194,4 +195,67 @@ fn writes_report_file_before_failing_validation() {
     assert_eq!(report.actuals.len(), 2);
     assert!(report.actuals.iter().any(|actual| actual.error.as_deref()
         == Some("cue vet failed with exit code 9: build should not be skipped")));
+}
+
+#[test]
+fn report_file_preserves_matrix_metadata() {
+    let repo = tempdir().unwrap();
+    support::write_declaration(
+        repo.path(),
+        ".github/actionspec/build/main.cue",
+        "build.yml",
+    );
+    let actual = repo.path().join("build-ts-service.json");
+    std::fs::write(
+        &actual,
+        r#"{"run":{"workflow":"build.yml","jobs":{"build":{"result":"success","matrix":{"app":"build-ts-service","target":"linux-amd64"},"outputs":{"contract_build":"build-ts-service","artifact_name":"build-ts-service-linux-amd64"}}}}}"#,
+    )
+    .unwrap();
+    let report = repo.path().join("validation-report.json");
+    let env = support::install_fake_cue(&repo, "success");
+
+    let mut command = Command::cargo_bin("github-actionspec").unwrap();
+    command
+        .envs(env)
+        .arg("validate-repo")
+        .arg("--repo")
+        .arg(repo.path())
+        .arg("--workflow")
+        .arg("build.yml")
+        .arg("--actual")
+        .arg(&actual)
+        .arg("--report-file")
+        .arg(&report);
+
+    command.assert().success();
+
+    let report: ValidationReport =
+        serde_json::from_str(&std::fs::read_to_string(report).unwrap()).unwrap();
+    assert_eq!(report.actuals.len(), 1);
+    assert_eq!(
+        report.actuals[0].matrix,
+        Some(std::collections::BTreeMap::from([
+            (
+                "app".to_string(),
+                Value::String("build-ts-service".to_owned()),
+            ),
+            (
+                "target".to_string(),
+                Value::String("linux-amd64".to_owned()),
+            ),
+        ]))
+    );
+    assert_eq!(
+        report.actuals[0].outputs,
+        Some(std::collections::BTreeMap::from([(
+            "build".to_string(),
+            std::collections::BTreeMap::from([
+                (
+                    "artifact_name".to_string(),
+                    "build-ts-service-linux-amd64".to_string(),
+                ),
+                ("contract_build".to_string(), "build-ts-service".to_string(),),
+            ]),
+        )]))
+    );
 }

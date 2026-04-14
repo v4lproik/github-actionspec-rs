@@ -51,7 +51,7 @@ Commands:
 - `github-actionspec discover --repo <path>`
 - `github-actionspec validate --schema <file> --schema <file> --contract <file> --actual <file-or-glob>`
 - `github-actionspec validate-repo --repo <path> [--workflow <name>] --actual <file-dir-or-glob> [--report-file <report.json>]`
-- `github-actionspec dashboard --current <report.json> [--baseline <report.json>] --output <dashboard.md>`
+- `github-actionspec dashboard --current <report.json> [--baseline <report.json>] [--output-key <name>] --output <dashboard.md>`
 
 Matrix-aware contracts can assert both matrix dimensions and job outputs. For example, this contract keeps a `build-ts-service` matrix entry aligned with the emitted `contract_build` output:
 
@@ -125,6 +125,18 @@ github-actionspec validate \
   --actual .github/actionspec-artifacts/build-ts-service.json
 ```
 
+When you generate a validation report or dashboard, the matrix labels and job outputs are preserved and rendered so the PR comment can show which variant changed and what it emitted, for example `app=build-ts-service, target=linux-amd64` together with `build.contract_build=build-ts-service`.
+
+To keep the dashboard compact, you can choose which outputs appear:
+
+```bash
+github-actionspec dashboard \
+  --current target/actionspec/report.json \
+  --output-key contract_build \
+  --output-key artifact_name \
+  --output target/actionspec/dashboard.md
+```
+
 ## GitHub Action
 
 This repository also exposes a Docker-based GitHub Action for the common `validate-repo` flow. The action runs the bundled `github-actionspec` binary together with the bundled `cue` runtime, so the calling workflow only needs a checked out repository and a normalized JSON payload.
@@ -166,6 +178,7 @@ Inputs:
 - `report-file`: path where the action writes the JSON validation report. Defaults to `/github/runner_temp/github-actionspec-dashboard/current/validation-report.json`
 - `baseline-report`: optional path to a previous JSON validation report used to compute matrix diffs
 - `dashboard-file`: path where the action writes the markdown matrix dashboard. Defaults to `/github/runner_temp/github-actionspec-dashboard/current/dashboard.md`
+- `dashboard-output-keys`: optional newline-separated list of output keys to include in the dashboard and PR comment
 - `write-summary`: whether to append the matrix dashboard to the job summary. Defaults to `true`
 - `comment-pr`: whether to upsert a PR comment containing a short validation summary and the full matrix dashboard. Defaults to `false`
 - `comment-title`: title used for the PR comment. Defaults to `Workflow Matrix Dashboard`
@@ -212,6 +225,9 @@ Examples:
     actual: |
       .github/actionspec-artifacts/build-ts-service.json
       .github/actionspec-artifacts/build-rust-service.json
+    dashboard-output-keys: |
+      contract_build
+      artifact_name
 
 - name: Validate, diff against a previous report, and comment on the PR
   id: actionspec

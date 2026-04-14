@@ -61,6 +61,10 @@ pub struct ActualValidationReport {
     pub status: ValidationStatus,
     pub jobs: BTreeMap<String, String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub matrix: Option<BTreeMap<String, Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub outputs: Option<BTreeMap<String, BTreeMap<String, String>>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
 

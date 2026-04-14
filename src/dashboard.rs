@@ -3,6 +3,8 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
 
+use serde_json::Value;
+
 use crate::errors::AppError;
 use crate::types::{ActualValidationReport, ValidationReport, ValidationStatus};
 
@@ -32,6 +34,7 @@ fn collect_job_names(
 fn compare_actual(
     current: &ActualValidationReport,
     baseline: Option<&ActualValidationReport>,
+    output_keys: Option<&BTreeSet<String>>,
 ) -> String {
     let Some(baseline) = baseline else {
         return "new".to_owned();
@@ -51,6 +54,22 @@ fn compare_actual(
             "ref {}->{}",
             baseline.ref_name.as_deref().unwrap_or("-"),
             current.ref_name.as_deref().unwrap_or("-")
+        ));
+    }
+
+    if current.matrix != baseline.matrix {
+        changes.push(format!(
+            "matrix {}->{}",
+            render_matrix_label(baseline.matrix.as_ref()),
+            render_matrix_label(current.matrix.as_ref())
+        ));
+    }
+
+    if current.outputs != baseline.outputs {
+        changes.push(format!(
+            "outputs {}->{}",
+            render_outputs_label(baseline.outputs.as_ref(), output_keys),
+            render_outputs_label(current.outputs.as_ref(), output_keys)
         ));
     }
 
@@ -81,6 +100,57 @@ fn compare_actual(
     }
 }
 
+fn render_matrix_value(value: &Value) -> String {
+    match value {
+        Value::String(inner) => inner.clone(),
+        _ => value.to_string(),
+    }
+}
+
+fn render_matrix_label(matrix: Option<&BTreeMap<String, Value>>) -> String {
+    let Some(matrix) = matrix else {
+        return "-".to_owned();
+    };
+
+    if matrix.is_empty() {
+        return "-".to_owned();
+    }
+
+    matrix
+        .iter()
+        .map(|(key, value)| format!("{key}={}", render_matrix_value(value)))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn render_outputs_label(
+    outputs: Option<&BTreeMap<String, BTreeMap<String, String>>>,
+    output_keys: Option<&BTreeSet<String>>,
+) -> String {
+    let Some(outputs) = outputs else {
+        return "-".to_owned();
+    };
+
+    if outputs.is_empty() {
+        return "-".to_owned();
+    }
+
+    outputs
+        .iter()
+        .flat_map(|(job_name, job_outputs)| {
+            job_outputs
+                .iter()
+                .filter(move |(key, _)| {
+                    output_keys
+                        .map(|allowed| allowed.contains(*key))
+                        .unwrap_or(true)
+                })
+                .map(move |(key, value)| format!("{job_name}.{key}={value}"))
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 pub fn load_validation_report(path: &Path) -> Result<ValidationReport, AppError> {
     let contents = fs::read_to_string(path)?;
     Ok(serde_json::from_str(&contents)?)
@@ -89,6 +159,7 @@ pub fn load_validation_report(path: &Path) -> Result<ValidationReport, AppError>
 pub fn render_dashboard_markdown(
     current: &ValidationReport,
     baseline: Option<&ValidationReport>,
+    output_keys: Option<&BTreeSet<String>>,
 ) -> String {
     let mut markdown = String::new();
     let job_names = collect_job_names(current, baseline);
@@ -132,13 +203,13 @@ pub fn render_dashboard_markdown(
     }
 
     let _ = writeln!(markdown);
-    let _ = write!(markdown, "| Payload | Ref | Status |");
+    let _ = write!(markdown, "| Payload | Ref | Matrix | Outputs | Status |");
     for job_name in &job_names {
         let _ = write!(markdown, " {} |", job_name);
     }
     let _ = writeln!(markdown, " Delta |");
 
-    let _ = write!(markdown, "| --- | --- | --- |");
+    let _ = write!(markdown, "| --- | --- | --- | --- | --- |");
     for _ in &job_names {
         let _ = write!(markdown, " --- |");
     }
@@ -155,9 +226,11 @@ pub fn render_dashboard_markdown(
     for actual in &current.actuals {
         let _ = write!(
             markdown,
-            "| `{}` | `{}` | `{:?}` |",
+            "| `{}` | `{}` | `{}` | `{}` | `{:?}` |",
             actual.actual_path.display(),
             actual.ref_name.as_deref().unwrap_or("-"),
+            render_matrix_label(actual.matrix.as_ref()),
+            render_outputs_label(actual.outputs.as_ref(), output_keys),
             actual.status
         );
         for job_name in &job_names {
@@ -168,7 +241,11 @@ pub fn render_dashboard_markdown(
             .as_ref()
             .and_then(|entries| entries.get(&actual.actual_path))
             .copied();
-        let _ = writeln!(markdown, " {} |", compare_actual(actual, baseline_actual));
+        let _ = writeln!(
+            markdown,
+            " {} |",
+            compare_actual(actual, baseline_actual, output_keys)
+        );
     }
 
     if let Some(baseline) = baseline {
@@ -199,9 +276,13 @@ pub fn render_dashboard_markdown(
 pub fn write_dashboard_markdown(
     current: &ValidationReport,
     baseline: Option<&ValidationReport>,
+    output_keys: Option<&BTreeSet<String>>,
     output_path: &Path,
 ) -> Result<(), AppError> {
-    fs::write(output_path, render_dashboard_markdown(current, baseline))?;
+    fs::write(
+        output_path,
+        render_dashboard_markdown(current, baseline, output_keys),
+    )?;
     Ok(())
 }
 
@@ -211,10 +292,15 @@ mod tests {
 
     use super::*;
 
+    type MatrixEntries<'a> = &'a [(&'a str, Value)];
+    type OutputEntries<'a> = &'a [(&'a str, &'a [(&'a str, &'a str)])];
+
     fn actual(
         path: &str,
         ref_name: &str,
         status: ValidationStatus,
+        matrix: Option<MatrixEntries<'_>>,
+        outputs: Option<OutputEntries<'_>>,
         jobs: &[(&str, &str)],
     ) -> ActualValidationReport {
         ActualValidationReport {
@@ -226,6 +312,25 @@ mod tests {
                 .iter()
                 .map(|(job, result)| (job.to_string(), result.to_string()))
                 .collect(),
+            matrix: matrix.map(|entries| {
+                entries
+                    .iter()
+                    .map(|(key, value)| (key.to_string(), value.clone()))
+                    .collect()
+            }),
+            outputs: outputs.map(|jobs| {
+                jobs.iter()
+                    .map(|(job_name, output_entries)| {
+                        (
+                            job_name.to_string(),
+                            output_entries
+                                .iter()
+                                .map(|(key, value)| (key.to_string(), value.to_string()))
+                                .collect(),
+                        )
+                    })
+                    .collect()
+            }),
             error: None,
         }
     }
@@ -240,12 +345,16 @@ mod tests {
                     "tests/fixtures/ci/ci-main-success.json",
                     "main",
                     ValidationStatus::Passed,
+                    Some(&[("app", Value::String("build-ts-service".to_owned()))]),
+                    Some(&[("build", &[("contract_build", "build-ts-service")])]),
                     &[("build", "success"), ("pages", "skipped")],
                 ),
                 actual(
                     "tests/fixtures/ci/ci-build-skipped.json",
                     "main",
                     ValidationStatus::Failed,
+                    Some(&[("app", Value::String("build-ts-service".to_owned()))]),
+                    Some(&[("build", &[("contract_build", "build-ts-service")])]),
                     &[("build", "skipped"), ("pages", "skipped")],
                 ),
             ],
@@ -258,24 +367,43 @@ mod tests {
                     "tests/fixtures/ci/ci-main-success.json",
                     "main",
                     ValidationStatus::Passed,
+                    Some(&[("app", Value::String("build-rust-service".to_owned()))]),
+                    Some(&[("build", &[("contract_build", "build-rust-service")])]),
                     &[("build", "success"), ("pages", "success")],
                 ),
                 actual(
                     "tests/fixtures/ci/ci-removed.json",
                     "main",
                     ValidationStatus::Passed,
+                    None,
+                    None,
                     &[("build", "success")],
                 ),
             ],
         };
 
-        let markdown = render_dashboard_markdown(&current, Some(&baseline));
+        let markdown = render_dashboard_markdown(
+            &current,
+            Some(&baseline),
+            Some(&BTreeSet::from(["contract_build".to_owned()])),
+        );
 
         assert!(markdown.contains("Validation Matrix"));
+        assert!(markdown
+            .contains("| Payload | Ref | Matrix | Outputs | Status | build | pages | Delta |"));
+        assert!(markdown.contains("app=build-ts-service"));
+        assert!(markdown.contains("build.contract_build=build-ts-service"));
+        assert!(!markdown.contains("artifact_name"));
+        assert!(markdown.contains("matrix app=build-rust-service->app=build-ts-service"));
+        assert!(markdown.contains(
+            "outputs build.contract_build=build-rust-service->build.contract_build=build-ts-service"
+        ));
         assert!(markdown.contains("ci-main-success.json"));
         assert!(markdown.contains("pages success->skipped"));
         assert!(
-            markdown.contains("| `tests/fixtures/ci/ci-build-skipped.json` | `main` | `Failed` |")
+            markdown.contains(
+                "| `tests/fixtures/ci/ci-build-skipped.json` | `main` | `app=build-ts-service` | `build.contract_build=build-ts-service` | `Failed` |"
+            )
         );
         assert!(markdown.contains(" new |"));
         assert!(markdown.contains("Removed Since Baseline"));
