@@ -5,6 +5,7 @@ runtime-image := env_var_or_default("GITHUB_ACTIONSPEC_RUNTIME_IMAGE", "github-a
 docker-runner := "./scripts/docker/run.sh"
 docker-runtime-runner := "./scripts/docker/run-runtime.sh"
 host-runner := "mise exec --"
+cue-go-version := `printf 'v%s' "$(mise current asdf:asdf-community/asdf-cue)"`
 
 default:
   @just --list
@@ -16,7 +17,7 @@ docker-build:
   IMAGE_TAG={{docker-image}} docker buildx bake --load dev
 
 docker-build-runtime:
-  RUNTIME_IMAGE_TAG={{runtime-image}} docker buildx bake --load runtime
+  CUE_VERSION={{cue-go-version}} RUNTIME_IMAGE_TAG={{runtime-image}} docker buildx bake --load runtime
 
 docker-smoke-runtime:
   {{docker-runtime-runner}} --help
@@ -26,7 +27,7 @@ docker-run-runtime:
   just docker-smoke-runtime
 
 docker-push-runtime image="docker.io/valproik/github-actionspec-rs:latest":
-  RUNTIME_IMAGE_TAG={{image}} docker buildx bake --push runtime
+  CUE_VERSION={{cue-go-version}} RUNTIME_IMAGE_TAG={{image}} docker buildx bake --push runtime
 
 runtime-ci:
   just docker-build-runtime
