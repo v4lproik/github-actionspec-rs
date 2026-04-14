@@ -183,8 +183,8 @@ fn cue_command(
 pub fn assert_cue_available(env: &Option<HashMap<String, String>>) -> Result<(), AppError> {
     let mut command = cue_command(env, None, "version");
 
-    match command.status() {
-        Ok(status) if status.success() => Ok(()),
+    match command.output() {
+        Ok(output) if output.status.success() => Ok(()),
         Ok(_) => Err(AppError::CueVersionFailed),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             Err(AppError::CueNotAvailable)

@@ -6,7 +6,9 @@ variable "RUNTIME_IMAGE_TAG" {
   default = "github-actionspec-rs:local"
 }
 
-variable "CUE_VERSION" {}
+variable "CUE_VERSION" {
+  default = "v0.15.0"
+}
 
 target "dev" {
   # Keep a single dev target for every local and CI verification flow so the image
@@ -14,6 +16,9 @@ target "dev" {
   context = "."
   dockerfile = "Dockerfile"
   target = "dev"
+  args = {
+    CUE_VERSION = CUE_VERSION
+  }
   tags = [IMAGE_TAG]
 }
 

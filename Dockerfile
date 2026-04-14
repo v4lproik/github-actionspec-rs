@@ -1,11 +1,21 @@
+FROM golang:1.24-bookworm AS cue-builder
+
+# Keep the action import path working when callers build the Docker action
+# without passing build args, while still letting repo-owned `just` commands
+# override the version from `.mise.toml`.
+ARG CUE_VERSION=v0.15.0
+RUN GOBIN=/cue-bin go install cuelang.org/go/cmd/cue@${CUE_VERSION}
+
 FROM rust:1.85.0-bookworm AS dev
 
 ARG CARGO_LLVM_COV_VERSION=0.6.15
 
 # Keep the image focused on the repo's build and verification toolchain so local
-# development and CI execute against the same Rust environment.
+# development and CI execute against the same Rust and CUE versions selected for
+# the repository.
 RUN rustup component add clippy rustfmt llvm-tools \
     && cargo install --locked cargo-llvm-cov --version "${CARGO_LLVM_COV_VERSION}"
+COPY --from=cue-builder /cue-bin/cue /usr/local/bin/cue
 
 WORKDIR /workspace
 
@@ -16,14 +26,6 @@ COPY Cargo.toml Cargo.lock ./
 COPY schema ./schema
 COPY src ./src
 RUN cargo build --locked --release
-
-FROM golang:1.24-bookworm AS cue-builder
-
-# Keep the action import path working when callers build the Docker action
-# without passing build args, while still letting repo-owned `just` commands
-# override the version from `.mise.toml`.
-ARG CUE_VERSION=v0.15.0
-RUN GOBIN=/cue-bin go install cuelang.org/go/cmd/cue@${CUE_VERSION}
 
 FROM debian:bookworm-slim AS runtime
 

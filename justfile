@@ -14,7 +14,7 @@ install:
   mise install
 
 docker-build:
-  IMAGE_TAG={{docker-image}} docker buildx bake --load dev
+  CUE_VERSION={{cue-go-version}} IMAGE_TAG={{docker-image}} docker buildx bake --load dev
 
 docker-build-runtime:
   CUE_VERSION={{cue-go-version}} RUNTIME_IMAGE_TAG={{runtime-image}} docker buildx bake --load runtime
