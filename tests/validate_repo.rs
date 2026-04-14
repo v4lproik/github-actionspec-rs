@@ -186,15 +186,29 @@ fn writes_report_file_before_failing_validation() {
         .arg("--report-file")
         .arg(&report);
 
-    command.assert().failure().stderr(predicate::str::contains(
-        "Validation failed for 1 of 2 payloads.",
-    ));
+    command
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "Validation failed for 1 of 2 payloads.",
+        ))
+        .stderr(predicate::str::contains(failing.display().to_string()))
+        .stderr(predicate::str::contains("build should not be skipped"));
 
     let report: ValidationReport =
         serde_json::from_str(&std::fs::read_to_string(report).unwrap()).unwrap();
     assert_eq!(report.actuals.len(), 2);
-    assert!(report.actuals.iter().any(|actual| actual.error.as_deref()
-        == Some("cue vet failed with exit code 9: build should not be skipped")));
+    assert!(report.actuals.iter().any(|actual| {
+        actual.actual_path == failing
+            && actual
+                .error
+                .as_deref()
+                .is_some_and(|error| error.contains("cue vet failed for"))
+            && actual
+                .error
+                .as_deref()
+                .is_some_and(|error| error.contains("build should not be skipped"))
+    }));
 }
 
 #[test]

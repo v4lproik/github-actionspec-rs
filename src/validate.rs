@@ -220,14 +220,45 @@ fn run_cue_vet(
                 .code()
                 .map(|value| value.to_string())
                 .unwrap_or_else(|| "unknown".to_owned());
-            if stderr.is_empty() {
-                Err(format!("cue vet failed with exit code {code}"))
-            } else {
-                Err(format!("cue vet failed with exit code {code}: {stderr}"))
-            }
+            Err(format_cue_vet_failure(actual_path, &code, &stderr))
         }
         Err(error) => Err(error.to_string()),
     }
+}
+
+fn format_cue_vet_failure(actual_path: &Path, code: &str, stderr: &str) -> String {
+    let prefix = format!(
+        "cue vet failed for {} with exit code {code}",
+        actual_path.display()
+    );
+
+    if stderr.is_empty() {
+        return prefix;
+    }
+
+    if let Some((field, left, right)) = extract_conflicting_values(stderr) {
+        return format!(
+            "{prefix}: field {field} has conflicting values {left} and {right}; raw cue stderr: {stderr}"
+        );
+    }
+
+    format!("{prefix}: {stderr}")
+}
+
+fn extract_conflicting_values(stderr: &str) -> Option<(String, String, String)> {
+    let first_line = stderr
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())?;
+    let (field, values) = first_line.split_once(": conflicting values ")?;
+    let values = values.trim_end_matches(':');
+    let (left, right) = values.rsplit_once(" and ")?;
+
+    Some((
+        field.trim().to_owned(),
+        left.trim().to_owned(),
+        right.trim().to_owned(),
+    ))
 }
 
 pub fn validate_contract(options: ValidateContractOptions) -> Result<(), AppError> {
