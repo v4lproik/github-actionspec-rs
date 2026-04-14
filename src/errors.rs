@@ -39,6 +39,9 @@ pub enum AppError {
     #[error("No files matched actual glob pattern: {0}")]
     NoActualGlobMatches(String),
 
+    #[error("Reusable workflow validation failed with {failed} issue(s).\n{details}")]
+    WorkflowCallerValidationFailures { failed: usize, details: String },
+
     #[error("Validation failed for {failed} of {total} payloads.\n{details}")]
     ValidationFailures {
         failed: usize,
@@ -54,6 +57,9 @@ pub enum AppError {
 
     #[error(transparent)]
     Json(#[from] serde_json::Error),
+
+    #[error(transparent)]
+    Yaml(#[from] serde_yaml::Error),
 
     #[error(transparent)]
     Regex(#[from] regex::Error),

@@ -42,6 +42,7 @@ just test
 just discover
 just coverage-summary
 just pr-create
+just validate-callers /path/to/repo
 just validate-repo /path/to/repo ci.yml /path/to/actual.json
 just validate-repo-report /path/to/repo ci.yml /path/to/payloads target/actionspec/report.json
 just dashboard-report target/actionspec/report.json target/actionspec/dashboard.md
@@ -50,9 +51,55 @@ just dashboard-report target/actionspec/report.json target/actionspec/dashboard.
 Commands:
 
 - `github-actionspec discover --repo <path>`
+- `github-actionspec validate-callers --repo <path>`
 - `github-actionspec validate --schema <file> --schema <file> --contract <file> --actual <file-or-glob>`
 - `github-actionspec validate-repo --repo <path> [--workflow <name>] --actual <file-dir-or-glob> [--report-file <report.json>]`
 - `github-actionspec dashboard --current <report.json> [--baseline <report.json>] [--output-key <name>] --output <dashboard.md>`
+
+Reusable workflows can also be treated as static contracts. `validate-callers` scans local `uses: ./.github/workflows/*.yml` jobs and checks that callers still match the callee workflow's `workflow_call` inputs and outputs.
+
+Example reusable workflow interface:
+
+```yaml
+on:
+  workflow_call:
+    inputs:
+      environment:
+        type: string
+        required: true
+    outputs:
+      image_tag:
+        value: ${{ jobs.build.outputs.image_tag }}
+```
+
+Example caller:
+
+```yaml
+jobs:
+  build:
+    uses: ./.github/workflows/reusable-build.yml
+    with:
+      environment: staging
+
+  summarize:
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "${{ needs.build.outputs.image_tag }}"
+```
+
+Validate those caller contracts locally with:
+
+```bash
+just validate-callers .
+```
+
+The command reports:
+
+- missing required reusable-workflow inputs
+- unexpected caller inputs
+- obvious literal type mismatches for `string`, `boolean`, and `number` inputs
+- `needs.<job>.outputs.<name>` references to outputs the called workflow no longer exports
 
 Matrix-aware contracts can assert both matrix dimensions and job outputs. For example, this contract keeps a `build-ts-service` matrix entry aligned with the emitted `contract_build` output:
 

@@ -18,6 +18,7 @@ glob = "=0.3.3"
 regex = "=1.12.3"
 serde = { version = "=1.0.219", features = ["derive"] }
 serde_json = "=1.0.143"
+serde_yaml = "=0.9.34"
 thiserror = "=2.0.18"
 walkdir = "=2.5.0"
 

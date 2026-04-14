@@ -26,6 +26,12 @@ pub enum Command {
         #[arg(long = "declarations-dir", default_value = ".github/actionspec")]
         declarations_dir: PathBuf,
     },
+    ValidateCallers {
+        #[arg(long)]
+        repo: PathBuf,
+        #[arg(long = "workflows-dir", default_value = ".github/workflows")]
+        workflows_dir: PathBuf,
+    },
     ValidateRepo {
         #[arg(long)]
         repo: PathBuf,
@@ -163,6 +169,28 @@ mod tests {
                 assert_eq!(actual, vec![PathBuf::from("actual.json")]);
                 assert_eq!(declarations_dir, PathBuf::from(".github/actionspec"));
                 assert_eq!(report_file, None);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn validate_callers_defaults_to_github_workflows_directory() {
+        let cli = Cli::try_parse_from([
+            "github-actionspec",
+            "validate-callers",
+            "--repo",
+            "/tmp/repo",
+        ])
+        .expect("cli should parse");
+
+        match cli.command {
+            Command::ValidateCallers {
+                repo,
+                workflows_dir,
+            } => {
+                assert_eq!(repo, PathBuf::from("/tmp/repo"));
+                assert_eq!(workflows_dir, PathBuf::from(".github/workflows"));
             }
             other => panic!("unexpected command: {other:?}"),
         }

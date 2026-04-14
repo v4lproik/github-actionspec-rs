@@ -92,6 +92,9 @@ pr-create-draft base="main":
 discover repo=".":
   {{host-runner}} cargo run -- discover --repo {{repo}}
 
+validate-callers repo=".":
+  {{host-runner}} cargo run -- validate-callers --repo {{repo}}
+
 validate-repo repo workflow actual:
   {{host-runner}} cargo run -- validate-repo --repo {{repo}} --workflow {{workflow}} --actual {{actual}}
 

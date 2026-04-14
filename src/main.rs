@@ -7,6 +7,7 @@ use github_actionspec_rs::validate::{
     validate_contract, validate_repo_workflow, write_validation_report, ValidateContractOptions,
     ValidateRepoWorkflowOptions,
 };
+use github_actionspec_rs::workflow_calls::{validate_workflow_callers, ValidateCallersOptions};
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
@@ -55,6 +56,24 @@ fn summarize_validation_failures(report: &github_actionspec_rs::types::Validatio
         .join("\n")
 }
 
+fn summarize_workflow_call_issues(
+    issues: &[github_actionspec_rs::workflow_calls::CallerValidationIssue],
+) -> String {
+    issues
+        .iter()
+        .map(|issue| {
+            format!(
+                "- {} job `{}` -> {}: {}",
+                issue.caller_workflow.display(),
+                issue.job_id,
+                issue.callee_workflow.display(),
+                issue.message
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 fn run() -> Result<(), github_actionspec_rs::errors::AppError> {
     let cli = Cli::parse();
 
@@ -78,6 +97,23 @@ fn run() -> Result<(), github_actionspec_rs::errors::AppError> {
         } => {
             let declarations = discover_declarations(&repo, &declarations_dir)?;
             println!("{}", serde_json::to_string_pretty(&declarations)?);
+        }
+        Command::ValidateCallers {
+            repo,
+            workflows_dir,
+        } => {
+            let result = validate_workflow_callers(ValidateCallersOptions {
+                repo_root: repo,
+                workflows_dir,
+            })?;
+            if !result.issues.is_empty() {
+                return Err(
+                    github_actionspec_rs::errors::AppError::WorkflowCallerValidationFailures {
+                        failed: result.issues.len(),
+                        details: summarize_workflow_call_issues(&result.issues),
+                    },
+                );
+            }
         }
         Command::ValidateRepo {
             repo,
