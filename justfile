@@ -98,9 +98,9 @@ validate-repo-report repo workflow actual report:
   just docker-build
   {{docker-runner}} cargo run -- validate-repo --repo {{repo}} --workflow {{workflow}} --actual {{actual}} --report-file {{report}}
 
-dashboard-report current output baseline="":
+dashboard-report current output baseline="" output_keys="":
   just docker-build
-  if [ -n "{{baseline}}" ]; then {{docker-runner}} cargo run -- dashboard --current {{current}} --baseline {{baseline}} --output {{output}}; else {{docker-runner}} cargo run -- dashboard --current {{current}} --output {{output}}; fi
+  output_key_args="$(printf '%s\n' '{{output_keys}}' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | awk 'NF {printf " --output-key %s", $0}')"; if [ -n "{{baseline}}" ]; then eval "{{docker-runner}} cargo run -- dashboard --current {{current}} --baseline {{baseline}} --output {{output}}$output_key_args"; else eval "{{docker-runner}} cargo run -- dashboard --current {{current}} --output {{output}}$output_key_args"; fi
 
 validate schema contract actual:
   {{host-runner}} cargo run -- validate --schema {{schema}} --contract {{contract}} --actual {{actual}}

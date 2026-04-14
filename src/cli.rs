@@ -43,6 +43,8 @@ pub enum Command {
         current: PathBuf,
         #[arg(long)]
         baseline: Option<PathBuf>,
+        #[arg(long = "output-key")]
+        output_key: Vec<String>,
         #[arg(long)]
         output: PathBuf,
     },
@@ -205,6 +207,10 @@ mod tests {
             "current.json",
             "--baseline",
             "baseline.json",
+            "--output-key",
+            "contract_build",
+            "--output-key",
+            "artifact_name",
             "--output",
             "dashboard.md",
         ])
@@ -214,10 +220,12 @@ mod tests {
             Command::Dashboard {
                 current,
                 baseline,
+                output_key,
                 output,
             } => {
                 assert_eq!(current, PathBuf::from("current.json"));
                 assert_eq!(baseline, Some(PathBuf::from("baseline.json")));
+                assert_eq!(output_key, vec!["contract_build", "artifact_name"]);
                 assert_eq!(output, PathBuf::from("dashboard.md"));
             }
             other => panic!("unexpected command: {other:?}"),

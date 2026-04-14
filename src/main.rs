@@ -6,6 +6,7 @@ use github_actionspec_rs::validate::{
     validate_contract, validate_repo_workflow, write_validation_report, ValidateContractOptions,
     ValidateRepoWorkflowOptions,
 };
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 fn main() {
@@ -83,6 +84,7 @@ fn run() -> Result<(), github_actionspec_rs::errors::AppError> {
         Command::Dashboard {
             current,
             baseline,
+            output_key,
             output,
         } => {
             let current = load_validation_report(&current)?;
@@ -90,7 +92,9 @@ fn run() -> Result<(), github_actionspec_rs::errors::AppError> {
                 Some(path) => Some(load_validation_report(&path)?),
                 None => None,
             };
-            write_dashboard_markdown(&current, baseline.as_ref(), &output)?;
+            let output_keys =
+                (!output_key.is_empty()).then(|| output_key.into_iter().collect::<BTreeSet<_>>());
+            write_dashboard_markdown(&current, baseline.as_ref(), output_keys.as_ref(), &output)?;
         }
     }
 

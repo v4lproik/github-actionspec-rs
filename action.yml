@@ -34,6 +34,10 @@ inputs:
     description: Path where the action should write the markdown matrix dashboard.
     required: false
     default: /github/runner_temp/github-actionspec-dashboard/current/dashboard.md
+  dashboard-output-keys:
+    description: Optional newline-separated list of job output keys to render in the dashboard and PR comment.
+    required: false
+    default: ""
   write-summary:
     description: Whether to append the rendered dashboard to the GitHub Actions job summary.
     required: false

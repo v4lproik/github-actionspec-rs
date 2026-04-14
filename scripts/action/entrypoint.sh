@@ -5,6 +5,24 @@ lower_bool() {
   printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]'
 }
 
+append_dashboard_output_args() {
+  if [ -z "${INPUT_DASHBOARD_OUTPUT_KEYS:-}" ]; then
+    return
+  fi
+
+  old_ifs=$IFS
+  IFS='
+,'
+  for key in ${INPUT_DASHBOARD_OUTPUT_KEYS}; do
+    trimmed="$(printf '%s' "$key" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+    [ -n "${trimmed}" ] || continue
+    set -- "$@" --output-key "${trimmed}"
+  done
+  IFS=$old_ifs
+
+  DASHBOARD_ARGS="$*"
+}
+
 write_outputs() {
   if [ -z "${GITHUB_OUTPUT:-}" ]; then
     return
@@ -123,16 +141,19 @@ status=$?
 set -e
 
 if [ -f "${REPORT_FILE}" ]; then
+  set --
   if [ -n "${BASELINE_REPORT}" ] && [ -f "${BASELINE_REPORT}" ]; then
-    github-actionspec dashboard \
-      --current "${REPORT_FILE}" \
-      --baseline "${BASELINE_REPORT}" \
-      --output "${DASHBOARD_FILE}"
-  else
-    github-actionspec dashboard \
-      --current "${REPORT_FILE}" \
-      --output "${DASHBOARD_FILE}"
+    set -- "$@" --baseline "${BASELINE_REPORT}"
   fi
+  append_dashboard_output_args "$@"
+  if [ -n "${DASHBOARD_ARGS:-}" ]; then
+    # shellcheck disable=SC2086
+    set -- ${DASHBOARD_ARGS}
+  fi
+  github-actionspec dashboard \
+    --current "${REPORT_FILE}" \
+    "$@" \
+    --output "${DASHBOARD_FILE}"
 
   write_outputs
   write_summary

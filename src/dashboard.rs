@@ -34,6 +34,7 @@ fn collect_job_names(
 fn compare_actual(
     current: &ActualValidationReport,
     baseline: Option<&ActualValidationReport>,
+    output_keys: Option<&BTreeSet<String>>,
 ) -> String {
     let Some(baseline) = baseline else {
         return "new".to_owned();
@@ -67,8 +68,8 @@ fn compare_actual(
     if current.outputs != baseline.outputs {
         changes.push(format!(
             "outputs {}->{}",
-            render_outputs_label(baseline.outputs.as_ref()),
-            render_outputs_label(current.outputs.as_ref())
+            render_outputs_label(baseline.outputs.as_ref(), output_keys),
+            render_outputs_label(current.outputs.as_ref(), output_keys)
         ));
     }
 
@@ -122,7 +123,10 @@ fn render_matrix_label(matrix: Option<&BTreeMap<String, Value>>) -> String {
         .join(", ")
 }
 
-fn render_outputs_label(outputs: Option<&BTreeMap<String, BTreeMap<String, String>>>) -> String {
+fn render_outputs_label(
+    outputs: Option<&BTreeMap<String, BTreeMap<String, String>>>,
+    output_keys: Option<&BTreeSet<String>>,
+) -> String {
     let Some(outputs) = outputs else {
         return "-".to_owned();
     };
@@ -136,6 +140,11 @@ fn render_outputs_label(outputs: Option<&BTreeMap<String, BTreeMap<String, Strin
         .flat_map(|(job_name, job_outputs)| {
             job_outputs
                 .iter()
+                .filter(move |(key, _)| {
+                    output_keys
+                        .map(|allowed| allowed.contains(*key))
+                        .unwrap_or(true)
+                })
                 .map(move |(key, value)| format!("{job_name}.{key}={value}"))
         })
         .collect::<Vec<_>>()
@@ -150,6 +159,7 @@ pub fn load_validation_report(path: &Path) -> Result<ValidationReport, AppError>
 pub fn render_dashboard_markdown(
     current: &ValidationReport,
     baseline: Option<&ValidationReport>,
+    output_keys: Option<&BTreeSet<String>>,
 ) -> String {
     let mut markdown = String::new();
     let job_names = collect_job_names(current, baseline);
@@ -220,7 +230,7 @@ pub fn render_dashboard_markdown(
             actual.actual_path.display(),
             actual.ref_name.as_deref().unwrap_or("-"),
             render_matrix_label(actual.matrix.as_ref()),
-            render_outputs_label(actual.outputs.as_ref()),
+            render_outputs_label(actual.outputs.as_ref(), output_keys),
             actual.status
         );
         for job_name in &job_names {
@@ -231,7 +241,11 @@ pub fn render_dashboard_markdown(
             .as_ref()
             .and_then(|entries| entries.get(&actual.actual_path))
             .copied();
-        let _ = writeln!(markdown, " {} |", compare_actual(actual, baseline_actual));
+        let _ = writeln!(
+            markdown,
+            " {} |",
+            compare_actual(actual, baseline_actual, output_keys)
+        );
     }
 
     if let Some(baseline) = baseline {
@@ -262,9 +276,13 @@ pub fn render_dashboard_markdown(
 pub fn write_dashboard_markdown(
     current: &ValidationReport,
     baseline: Option<&ValidationReport>,
+    output_keys: Option<&BTreeSet<String>>,
     output_path: &Path,
 ) -> Result<(), AppError> {
-    fs::write(output_path, render_dashboard_markdown(current, baseline))?;
+    fs::write(
+        output_path,
+        render_dashboard_markdown(current, baseline, output_keys),
+    )?;
     Ok(())
 }
 
@@ -364,13 +382,18 @@ mod tests {
             ],
         };
 
-        let markdown = render_dashboard_markdown(&current, Some(&baseline));
+        let markdown = render_dashboard_markdown(
+            &current,
+            Some(&baseline),
+            Some(&BTreeSet::from(["contract_build".to_owned()])),
+        );
 
         assert!(markdown.contains("Validation Matrix"));
         assert!(markdown
             .contains("| Payload | Ref | Matrix | Outputs | Status | build | pages | Delta |"));
         assert!(markdown.contains("app=build-ts-service"));
         assert!(markdown.contains("build.contract_build=build-ts-service"));
+        assert!(!markdown.contains("artifact_name"));
         assert!(markdown.contains("matrix app=build-rust-service->app=build-ts-service"));
         assert!(markdown.contains(
             "outputs build.contract_build=build-rust-service->build.contract_build=build-ts-service"

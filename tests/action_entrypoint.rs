@@ -55,13 +55,16 @@ EOF
 fi
 if [ "$cmd" = "dashboard" ]; then
   output=""
+  args_log=""
   prev=""
   for arg in "$@"; do
     if [ "$prev" = "--output" ]; then
       output="$arg"
     fi
+    args_log="$args_log $arg"
     prev="$arg"
   done
+  printf '%s\n' "$args_log" > "${DASHBOARD_ARGS_LOG}"
   mkdir -p "$(dirname "$output")"
   cat > "$output" <<'EOF'
 ## Validation Matrix
@@ -154,10 +157,12 @@ esac
     let event_file = temp.path().join("event.json");
     let curl_log = temp.path().join("curl.log");
     let jq_body_log = temp.path().join("jq-body.log");
+    let dashboard_args_log = temp.path().join("dashboard-args.log");
 
     fs::write(&event_file, r#"{"pull_request":{"number":42}}"#).unwrap();
     fs::write(&curl_log, "").unwrap();
     fs::write(&jq_body_log, "").unwrap();
+    fs::write(&dashboard_args_log, "").unwrap();
 
     let status = Command::new("/bin/sh")
         .arg("scripts/action/entrypoint.sh")
@@ -175,6 +180,10 @@ esac
         )
         .env("INPUT_REPORT_FILE", &report_file)
         .env("INPUT_DASHBOARD_FILE", &dashboard_file)
+        .env(
+            "INPUT_DASHBOARD_OUTPUT_KEYS",
+            "contract_build\nartifact_name",
+        )
         .env("INPUT_COMMENT_PR", "true")
         .env("INPUT_COMMENT_TITLE", "Workflow Matrix Dashboard")
         .env("INPUT_COMMENT_TAG", "test-matrix")
@@ -185,6 +194,7 @@ esac
         .env("GITHUB_REPOSITORY", "v4lproik/github-actionspec-rs")
         .env("CURL_LOG", &curl_log)
         .env("JQ_BODY_LOG", &jq_body_log)
+        .env("DASHBOARD_ARGS_LOG", &dashboard_args_log)
         .status()
         .unwrap();
 
@@ -198,6 +208,10 @@ esac
 
     let summary = fs::read_to_string(&summary_file).unwrap();
     assert!(summary.contains("Validation Matrix"));
+
+    let dashboard_args = fs::read_to_string(&dashboard_args_log).unwrap();
+    assert!(dashboard_args.contains("--output-key contract_build"));
+    assert!(dashboard_args.contains("--output-key artifact_name"));
 
     let curl_log = fs::read_to_string(&curl_log).unwrap();
     assert!(curl_log.contains("/issues/42/comments"));
