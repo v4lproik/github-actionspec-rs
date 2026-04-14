@@ -53,9 +53,9 @@ inputs:
     required: false
     default: ""
   dashboard-file:
-    description: Path where the action should write the markdown matrix dashboard.
+    description: Path where the action should write the markdown matrix dashboard. When omitted, the action writes `dashboard.md` next to `report-file`.
     required: false
-    default: /github/runner_temp/github-actionspec-dashboard/current/dashboard.md
+    default: ""
   dashboard-output-keys:
     description: Optional newline-separated list of job output keys to render in the dashboard and PR comment.
     required: false

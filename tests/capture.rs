@@ -160,6 +160,27 @@ fn emit_fragment_cli_rejects_duplicate_outputs() {
 }
 
 #[test]
+fn emit_fragment_cli_rejects_invalid_step_output_shape() {
+    let temp = tempdir().expect("temp dir should be created");
+
+    let mut command = Command::cargo_bin("github-actionspec").expect("binary should exist");
+    command
+        .arg("emit-fragment")
+        .arg("--job")
+        .arg("build")
+        .arg("--result")
+        .arg("success")
+        .arg("--step-output")
+        .arg("compile=sha256:abc123")
+        .arg("--file")
+        .arg(temp.path().join("build.json"));
+
+    command.assert().failure().stderr(predicate::str::contains(
+        "Expected STEP_ID.OUTPUT_NAME=VALUE",
+    ));
+}
+
+#[test]
 fn emit_fragment_output_round_trips_through_capture() {
     let temp = tempdir().expect("temp dir should be created");
     let fragments_dir = temp.path().join("fragments");

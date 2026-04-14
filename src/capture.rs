@@ -41,31 +41,49 @@ pub struct CapturedJobFragment {
     pub steps: BTreeMap<String, WorkflowStepRecord>,
 }
 
-fn normalize_non_empty_capture_job(job: &str, path: &Path) -> Result<String, AppError> {
-    let normalized = job.trim();
-    if normalized.is_empty() {
-        return Err(AppError::MissingCaptureJobName(path.to_path_buf()));
-    }
+fn normalize_non_empty(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_owned())
+}
 
-    Ok(normalized.to_owned())
+fn normalize_non_empty_capture_job(job: &str, path: &Path) -> Result<String, AppError> {
+    normalize_non_empty(job).ok_or_else(|| AppError::MissingCaptureJobName(path.to_path_buf()))
+}
+
+fn normalize_non_empty_capture_result(result: &str, path: &Path) -> Result<String, AppError> {
+    normalize_non_empty(result).ok_or_else(|| AppError::MissingCaptureJobResult(path.to_path_buf()))
 }
 
 fn normalize_non_empty_emit_value(
     value: &str,
     missing_error: AppError,
 ) -> Result<String, AppError> {
-    let normalized = value.trim();
-    if normalized.is_empty() {
-        return Err(missing_error);
+    normalize_non_empty(value).ok_or(missing_error)
+}
+
+fn insert_unique_source(
+    sources: &mut BTreeMap<String, String>,
+    field: &'static str,
+    key: &str,
+    entry: &str,
+) -> Result<(), AppError> {
+    if let Some(first) = sources.insert(key.to_owned(), entry.to_owned()) {
+        return Err(AppError::DuplicateEmitFragmentArgument {
+            field,
+            key: key.to_owned(),
+            first,
+            second: entry.to_owned(),
+        });
     }
 
-    Ok(normalized.to_owned())
+    Ok(())
 }
 
 fn load_job_fragment(path: &Path) -> Result<CapturedJobFragment, AppError> {
     let fragment: CapturedJobFragment = serde_json::from_str(&fs::read_to_string(path)?)?;
     Ok(CapturedJobFragment {
         job: normalize_non_empty_capture_job(&fragment.job, path)?,
+        result: normalize_non_empty_capture_result(&fragment.result, path)?,
         ..fragment
     })
 }
@@ -154,14 +172,7 @@ fn parse_fragment_outputs(entries: &[String]) -> Result<BTreeMap<String, String>
     let mut sources = BTreeMap::new();
     for entry in entries {
         let (key, value) = parse_key_value_assignment("output", entry, "KEY=VALUE", true)?;
-        if let Some(first) = sources.insert(key.clone(), entry.clone()) {
-            return Err(AppError::DuplicateEmitFragmentArgument {
-                field: "output",
-                key,
-                first,
-                second: entry.clone(),
-            });
-        }
+        insert_unique_source(&mut sources, "output", &key, entry)?;
         outputs.insert(key, value);
     }
 
@@ -173,14 +184,7 @@ fn parse_fragment_matrix(entries: &[String]) -> Result<BTreeMap<String, Value>, 
     let mut sources = BTreeMap::new();
     for entry in entries {
         let (key, value) = parse_key_value_assignment("matrix entry", entry, "KEY=VALUE", true)?;
-        if let Some(first) = sources.insert(key.clone(), entry.clone()) {
-            return Err(AppError::DuplicateEmitFragmentArgument {
-                field: "matrix entry",
-                key,
-                first,
-                second: entry.clone(),
-            });
-        }
+        insert_unique_source(&mut sources, "matrix entry", &key, entry)?;
         // Preserve native JSON scalars and arrays when possible so downstream contracts can
         // distinguish numbers and booleans from plain strings.
         let parsed = serde_json::from_str(&value).unwrap_or_else(|_| Value::String(value.clone()));
@@ -198,14 +202,7 @@ fn parse_step_conclusions(
     for entry in entries {
         let (step_id, conclusion) =
             parse_key_value_assignment("step conclusion", entry, "STEP_ID=CONCLUSION", false)?;
-        if let Some(first) = sources.insert(step_id.clone(), entry.clone()) {
-            return Err(AppError::DuplicateEmitFragmentArgument {
-                field: "step conclusion",
-                key: step_id,
-                first,
-                second: entry.clone(),
-            });
-        }
+        insert_unique_source(&mut sources, "step conclusion", &step_id, entry)?;
         steps.insert(
             step_id,
             WorkflowStepRecord {
@@ -251,14 +248,7 @@ fn merge_step_outputs(
     for entry in entries {
         let (step_id, output_name, value) = parse_step_output_assignment(entry)?;
         let qualified_key = format!("{step_id}.{output_name}");
-        if let Some(first) = sources.insert(qualified_key.clone(), entry.clone()) {
-            return Err(AppError::DuplicateEmitFragmentArgument {
-                field: "step output",
-                key: qualified_key,
-                first,
-                second: entry.clone(),
-            });
-        }
+        insert_unique_source(&mut sources, "step output", &qualified_key, entry)?;
         let step = steps
             .entry(step_id.clone())
             .or_insert_with(|| WorkflowStepRecord {
@@ -456,6 +446,71 @@ mod tests {
     }
 
     #[test]
+    fn rejects_duplicate_emit_fragment_step_conclusions() {
+        let error = emit_job_fragment(EmitFragmentOptions {
+            job: "build".to_owned(),
+            result: "success".to_owned(),
+            outputs: Vec::new(),
+            matrix: Vec::new(),
+            step_conclusions: vec!["compile=success".to_owned(), "compile=failure".to_owned()],
+            step_outputs: Vec::new(),
+        })
+        .expect_err("duplicate step conclusions should fail");
+
+        assert!(error
+            .to_string()
+            .contains("Duplicate emit-fragment step conclusion `compile`"));
+    }
+
+    #[test]
+    fn rejects_invalid_emit_fragment_step_output_shape() {
+        let error = emit_job_fragment(EmitFragmentOptions {
+            job: "build".to_owned(),
+            result: "success".to_owned(),
+            outputs: Vec::new(),
+            matrix: Vec::new(),
+            step_conclusions: Vec::new(),
+            step_outputs: vec!["compile=sha256:abc123".to_owned()],
+        })
+        .expect_err("invalid step output syntax should fail");
+
+        assert!(error
+            .to_string()
+            .contains("Expected STEP_ID.OUTPUT_NAME=VALUE"));
+    }
+
+    #[test]
+    fn emits_fragment_with_complex_matrix_values() {
+        let fragment = emit_job_fragment(EmitFragmentOptions {
+            job: "build".to_owned(),
+            result: "success".to_owned(),
+            outputs: Vec::new(),
+            matrix: vec![
+                r#"targets=["linux-amd64","linux-arm64"]"#.to_owned(),
+                r#"meta={"tier":"prod","replicas":2}"#.to_owned(),
+            ],
+            step_conclusions: Vec::new(),
+            step_outputs: Vec::new(),
+        })
+        .expect("fragment should be emitted");
+
+        assert_eq!(
+            fragment.matrix.get("targets"),
+            Some(&Value::Array(vec![
+                Value::String("linux-amd64".to_owned()),
+                Value::String("linux-arm64".to_owned()),
+            ]))
+        );
+        assert_eq!(
+            fragment.matrix.get("meta"),
+            Some(&Value::Object(serde_json::Map::from_iter([
+                ("tier".to_owned(), Value::String("prod".to_owned())),
+                ("replicas".to_owned(), Value::from(2)),
+            ])))
+        );
+    }
+
+    #[test]
     fn captures_workflow_run_from_job_fragments() {
         let temp = tempdir().expect("temp dir should be created");
         let fragments_dir = temp.path().join("fragments");
@@ -615,6 +670,35 @@ mod tests {
         assert!(error
             .to_string()
             .contains("Duplicate capture input `run_ci`"));
+    }
+
+    #[test]
+    fn rejects_blank_capture_fragment_result() {
+        let temp = tempdir().expect("temp dir should be created");
+        let fragment = temp.path().join("build.json");
+        write_fragment(
+            &fragment,
+            r#"{
+  "job": "build",
+  "result": "   "
+}"#,
+        );
+
+        let error = capture_workflow_run(CaptureWorkflowOptions {
+            workflow: "ci.yml".to_owned(),
+            ref_name: None,
+            inputs: Vec::new(),
+            job_files: vec![fragment.clone()],
+        })
+        .expect_err("blank fragment results should fail");
+
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "Job fragment is missing a non-empty `result` field: {}",
+                fragment.display()
+            )
+        );
     }
 
     #[test]

@@ -28,6 +28,17 @@ append_repeated_args() {
   eval "${target_var}=\"\${args}\""
 }
 
+resolve_dashboard_file() {
+  configured_dashboard_file="${INPUT_DASHBOARD_FILE:-}"
+  if [ -n "${configured_dashboard_file}" ]; then
+    printf '%s' "${configured_dashboard_file}"
+    return
+  fi
+
+  report_dir="$(dirname "${REPORT_FILE}")"
+  printf '%s/dashboard.md' "${report_dir}"
+}
+
 write_outputs() {
   if [ -z "${GITHUB_OUTPUT:-}" ]; then
     return
@@ -173,7 +184,7 @@ case "${MODE}" in
     ;;
   validate-repo)
     REPORT_FILE="${INPUT_REPORT_FILE:-/github/runner_temp/github-actionspec-dashboard/current/validation-report.json}"
-    DASHBOARD_FILE="${INPUT_DASHBOARD_FILE:-/github/runner_temp/github-actionspec-dashboard/current/dashboard.md}"
+    DASHBOARD_FILE="$(resolve_dashboard_file)"
 
     mkdir -p "$(dirname "${REPORT_FILE}")" "$(dirname "${DASHBOARD_FILE}")"
 

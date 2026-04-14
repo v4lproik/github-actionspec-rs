@@ -54,6 +54,9 @@ pub enum AppError {
     #[error("Job fragment is missing a non-empty `job` field: {0}")]
     MissingCaptureJobName(PathBuf),
 
+    #[error("Job fragment is missing a non-empty `result` field: {0}")]
+    MissingCaptureJobResult(PathBuf),
+
     #[error("Duplicate captured job `{job}` found in {first} and {second}")]
     DuplicateCaptureJob {
         job: String,

@@ -223,6 +223,88 @@ esac
 }
 
 #[test]
+fn action_entrypoint_defaults_dashboard_next_to_custom_report_file() {
+    let temp = tempdir().unwrap();
+    let bin_dir = temp.path().join("bin");
+    fs::create_dir_all(&bin_dir).unwrap();
+
+    write_executable(
+        &bin_dir.join("github-actionspec"),
+        r#"#!/bin/sh
+set -eu
+cmd="$1"
+shift
+if [ "$cmd" = "validate-repo" ]; then
+  report_file=""
+  prev=""
+  for arg in "$@"; do
+    if [ "$prev" = "--report-file" ]; then
+      report_file="$arg"
+    fi
+    prev="$arg"
+  done
+  mkdir -p "$(dirname "$report_file")"
+  cat > "$report_file" <<'EOF'
+{
+  "workflow": "ci.yml",
+  "declaration_path": ".github/actionspec/ci/main.cue",
+  "actuals": []
+}
+EOF
+  exit 0
+fi
+if [ "$cmd" = "dashboard" ]; then
+  output=""
+  prev=""
+  for arg in "$@"; do
+    if [ "$prev" = "--output" ]; then
+      output="$arg"
+    fi
+    prev="$arg"
+  done
+  mkdir -p "$(dirname "$output")"
+  printf '## Validation Matrix\n' > "$output"
+  exit 0
+fi
+exit 1
+"#,
+    );
+
+    let report_file = temp.path().join("custom/reports/validation-report.json");
+    let expected_dashboard = temp.path().join("custom/reports/dashboard.md");
+    let output_file = temp.path().join("github_output.txt");
+    let summary_file = temp.path().join("step_summary.md");
+
+    let status = Command::new("/bin/sh")
+        .arg("scripts/action/entrypoint.sh")
+        .arg("validate-repo")
+        .arg("--repo")
+        .arg(".")
+        .arg("--workflow")
+        .arg("ci.yml")
+        .arg("--actual")
+        .arg("tests/fixtures/ci/ci-main-success.json")
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .env(
+            "PATH",
+            format!("{}:{}", bin_dir.display(), std::env::var("PATH").unwrap()),
+        )
+        .env("INPUT_REPORT_FILE", &report_file)
+        .env("GITHUB_OUTPUT", &output_file)
+        .env("GITHUB_STEP_SUMMARY", &summary_file)
+        .status()
+        .unwrap();
+
+    assert!(status.success());
+    assert!(report_file.exists());
+    assert!(expected_dashboard.exists());
+
+    let outputs = fs::read_to_string(&output_file).unwrap();
+    assert!(outputs.contains(&format!("report-path={}", report_file.display())));
+    assert!(outputs.contains(&format!("dashboard-path={}", expected_dashboard.display())));
+}
+
+#[test]
 fn action_entrypoint_captures_workflow_payload_and_writes_capture_output() {
     let temp = tempdir().unwrap();
     let bin_dir = temp.path().join("bin");

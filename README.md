@@ -407,7 +407,7 @@ Inputs:
 - `declarations-dir`: custom declarations directory. Defaults to `.github/actionspec`
 - `report-file`: path where the action writes the JSON validation report. Defaults to `/github/runner_temp/github-actionspec-dashboard/current/validation-report.json`
 - `baseline-report`: optional path to a previous JSON validation report used to compute matrix diffs
-- `dashboard-file`: path where the action writes the markdown matrix dashboard. Defaults to `/github/runner_temp/github-actionspec-dashboard/current/dashboard.md`
+- `dashboard-file`: path where the action writes the markdown matrix dashboard. When omitted, the action writes `dashboard.md` next to `report-file`
 - `dashboard-output-keys`: optional newline-separated list of output keys to include in the dashboard and PR comment
 - `write-summary`: whether to append the matrix dashboard to the job summary. Defaults to `true`
 - `comment-pr`: whether to upsert a PR comment containing a short validation summary and the full matrix dashboard. Defaults to `false`
