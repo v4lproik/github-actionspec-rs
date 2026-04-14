@@ -5,7 +5,7 @@ runtime-image := env_var_or_default("GITHUB_ACTIONSPEC_RUNTIME_IMAGE", "github-a
 docker-runner := "./scripts/docker/run.sh"
 docker-runtime-runner := "./scripts/docker/run-runtime.sh"
 host-runner := "mise exec --"
-cue-go-version := `printf 'v%s' "$(mise current asdf:asdf-community/asdf-cue)"`
+cue-go-version := `version="$(mise current asdf:asdf-community/asdf-cue 2>/dev/null | awk 'NF { print $1; exit }')"; if [ -z "$version" ]; then version="$(sed -n 's/^"asdf:asdf-community\/asdf-cue" = "\(.*\)"$/\1/p' .mise.toml | head -n1)"; fi; if [ -z "$version" ]; then echo "failed to resolve CUE version from mise" >&2; exit 1; fi; case "$version" in v*) printf '%s' "$version" ;; *) printf 'v%s' "$version" ;; esac`
 
 default:
   @just --list
