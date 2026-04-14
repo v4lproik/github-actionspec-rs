@@ -100,15 +100,16 @@ fn fails_when_cue_vet_fails() {
     let error = validate_contract(ValidateContractOptions {
         schema_paths: vec![schema],
         contract_path: contract,
-        actual_paths: vec![actual],
+        actual_paths: vec![actual.clone()],
         cwd: Some(temp.path().to_path_buf()),
         env: Some(env),
     })
     .unwrap_err();
 
-    assert!(error
-        .to_string()
-        .contains("cue vet failed with exit code 9"));
+    let message = error.to_string();
+    assert!(message.contains("cue vet failed for"));
+    assert!(message.contains(&actual.display().to_string()));
+    assert!(message.contains("with exit code 9"));
 }
 
 #[test]
@@ -183,7 +184,7 @@ if [ "$1" = "vet" ]; then
   app_value="$(grep -o '"app":"[^"]*"' "$last" | head -n1 | cut -d'"' -f4)"
   contract_build_value="$(grep -o '"contract_build":"[^"]*"' "$last" | head -n1 | cut -d'"' -f4)"
   if [ "${app_value}" != "${contract_build_value}" ]; then
-    echo "matrix app ${app_value} must match outputs.contract_build ${contract_build_value}" >&2
+    echo "run.jobs.build.outputs.contract_build: conflicting values \"${app_value}\" and \"${contract_build_value}\"" >&2
     exit 9
   fi
   exit 0
@@ -195,13 +196,14 @@ exit 1
     let error = validate_contract(ValidateContractOptions {
         schema_paths: vec![schema],
         contract_path: contract,
-        actual_paths: vec![actual],
+        actual_paths: vec![actual.clone()],
         cwd: Some(temp.path().to_path_buf()),
         env: Some(env),
     })
     .unwrap_err();
 
-    assert!(error
-        .to_string()
-        .contains("matrix app build-ts-service must match outputs.contract_build contract-build",));
+    let message = error.to_string();
+    assert!(message.contains(&actual.display().to_string()));
+    assert!(message.contains("field run.jobs.build.outputs.contract_build"));
+    assert!(message.contains("conflicting values \"build-ts-service\" and \"contract-build\""));
 }

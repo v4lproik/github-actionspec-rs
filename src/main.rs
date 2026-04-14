@@ -2,6 +2,7 @@ use clap::Parser;
 use github_actionspec_rs::cli::{Cli, Command};
 use github_actionspec_rs::dashboard::{load_validation_report, write_dashboard_markdown};
 use github_actionspec_rs::discovery::discover_declarations;
+use github_actionspec_rs::types::ValidationStatus;
 use github_actionspec_rs::validate::{
     validate_contract, validate_repo_workflow, write_validation_report, ValidateContractOptions,
     ValidateRepoWorkflowOptions,
@@ -28,6 +29,25 @@ fn normalize_actual_inputs(actuals: Vec<PathBuf>) -> Vec<PathBuf> {
                 .collect::<Vec<_>>()
         })
         .collect()
+}
+
+fn summarize_validation_failures(report: &github_actionspec_rs::types::ValidationReport) -> String {
+    report
+        .actuals
+        .iter()
+        .filter(|actual| actual.status == ValidationStatus::Failed)
+        .map(|actual| {
+            format!(
+                "- {}: {}",
+                actual.actual_path.display(),
+                actual
+                    .error
+                    .as_deref()
+                    .unwrap_or("validation failed without a reported cue error")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn run() -> Result<(), github_actionspec_rs::errors::AppError> {
@@ -77,6 +97,7 @@ fn run() -> Result<(), github_actionspec_rs::errors::AppError> {
                 return Err(github_actionspec_rs::errors::AppError::ValidationFailures {
                     failed: result.failed_count,
                     total: result.report.actuals.len(),
+                    details: summarize_validation_failures(&result.report),
                 });
             }
         }

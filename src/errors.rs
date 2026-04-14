@@ -39,8 +39,12 @@ pub enum AppError {
     #[error("No files matched actual glob pattern: {0}")]
     NoActualGlobMatches(String),
 
-    #[error("Validation failed for {failed} of {total} payloads.")]
-    ValidationFailures { failed: usize, total: usize },
+    #[error("Validation failed for {failed} of {total} payloads.\n{details}")]
+    ValidationFailures {
+        failed: usize,
+        total: usize,
+        details: String,
+    },
 
     #[error(transparent)]
     GlobPattern(#[from] glob::PatternError),
