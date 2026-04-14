@@ -47,7 +47,7 @@ jobs:
       - name: Classify changed files
         id: filter
         if: ${{ github.event_name != 'workflow_dispatch' }}
-        uses: dorny/paths-filter@v3.0.2
+        uses: dorny/paths-filter@v4.0.1
         with:
           base: ${{ github.ref }}
           filters: .github/filters/changes.yml
@@ -74,7 +74,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
       - name: Install just
         uses: taiki-e/install-action@v2
         with:
@@ -93,7 +93,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
       - name: Install just
         uses: taiki-e/install-action@v2
         with:
@@ -116,7 +116,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
       - name: Install just
         uses: taiki-e/install-action@v2
         with:
@@ -220,7 +220,7 @@ jobs:
         run: just validate-repo-report . ci.yml tests/fixtures/ci "${{ runner.temp }}/github-actionspec-dashboard/current/validation-report.json"
       - name: Find baseline matrix artifact
         id: baseline-matrix
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const owner = context.repo.owner;
@@ -301,7 +301,7 @@ jobs:
           github-token: ${{ github.token }}
       - name: Upload matrix dashboard artifact
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ci-matrix-dashboard
           path: |
@@ -427,7 +427,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
       - name: Install just
         uses: taiki-e/install-action@v2
         with:
@@ -447,7 +447,7 @@ jobs:
           fi
       - name: Log in to Docker Hub
         if: ${{ steps.publish-check.outputs.enabled == 'true' }}
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -477,7 +477,7 @@ jobs:
         uses: actions/checkout@v6
       - name: Check Pages enablement
         id: pages-check
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             try {
@@ -495,7 +495,7 @@ jobs:
             }
       - name: Configure Pages
         if: ${{ steps.pages-check.outputs.enabled == 'true' }}
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
       - name: Upload site artifact
         if: ${{ steps.pages-check.outputs.enabled == 'true' }}
         uses: actions/upload-pages-artifact@v4
@@ -504,7 +504,7 @@ jobs:
       - name: Deploy to GitHub Pages
         if: ${{ steps.pages-check.outputs.enabled == 'true' }}
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
       - name: Skip when Pages is not enabled
         if: ${{ steps.pages-check.outputs.enabled != 'true' }}
         run: |
