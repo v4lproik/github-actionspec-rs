@@ -1,6 +1,7 @@
 use clap::Parser;
 use github_actionspec_rs::capture::{
-    capture_workflow_run, write_captured_workflow_run, CaptureWorkflowOptions,
+    capture_workflow_run, emit_job_fragment, write_captured_workflow_run,
+    write_emitted_job_fragment, CaptureWorkflowOptions, EmitFragmentOptions,
 };
 use github_actionspec_rs::cli::{Cli, Command};
 use github_actionspec_rs::dashboard::{load_validation_report, write_dashboard_markdown};
@@ -82,6 +83,25 @@ fn run() -> Result<(), github_actionspec_rs::errors::AppError> {
     let cli = Cli::parse();
 
     match cli.command {
+        Command::EmitFragment {
+            job,
+            result,
+            output,
+            matrix,
+            step_conclusion,
+            step_output,
+            file,
+        } => {
+            let fragment = emit_job_fragment(EmitFragmentOptions {
+                job,
+                result,
+                outputs: output,
+                matrix,
+                step_conclusions: step_conclusion,
+                step_outputs: step_output,
+            })?;
+            write_emitted_job_fragment(&fragment, &file)?;
+        }
         Command::Capture {
             workflow,
             ref_name,

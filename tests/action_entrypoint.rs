@@ -221,3 +221,102 @@ esac
     assert!(comment_body.contains("Current: `1` payloads, `1` passed, `0` failed"));
     assert!(comment_body.contains("## Validation Matrix"));
 }
+
+#[test]
+fn action_entrypoint_captures_workflow_payload_and_writes_capture_output() {
+    let temp = tempdir().unwrap();
+    let bin_dir = temp.path().join("bin");
+    fs::create_dir_all(&bin_dir).unwrap();
+
+    write_executable(
+        &bin_dir.join("github-actionspec"),
+        r#"#!/bin/sh
+set -eu
+cmd="$1"
+shift
+if [ "$cmd" = "capture" ]; then
+  output=""
+  args_log=""
+  prev=""
+  for arg in "$@"; do
+    if [ "$prev" = "--output" ]; then
+      output="$arg"
+    fi
+    args_log="$args_log $arg"
+    prev="$arg"
+  done
+  printf '%s\n' "$args_log" > "${CAPTURE_ARGS_LOG}"
+  mkdir -p "$(dirname "$output")"
+  cat > "$output" <<'EOF'
+{
+  "run": {
+    "workflow": "ci.yml",
+    "ref": "main",
+    "inputs": {
+      "run_ci": "true"
+    },
+    "jobs": {
+      "build": {
+        "result": "success"
+      },
+      "tests": {
+        "result": "success"
+      }
+    }
+  }
+}
+EOF
+  exit 0
+fi
+if [ "$cmd" = "dashboard" ]; then
+  echo "dashboard should not run in capture mode" >&2
+  exit 7
+fi
+exit 1
+"#,
+    );
+
+    let capture_file = temp
+        .path()
+        .join(".github-actionspec-capture/current/workflow-run.json");
+    let output_file = temp.path().join("github_output.txt");
+    let args_log = temp.path().join("capture-args.log");
+
+    fs::write(&args_log, "").unwrap();
+
+    let status = Command::new("/bin/sh")
+        .arg("scripts/action/entrypoint.sh")
+        .arg("capture")
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .env(
+            "PATH",
+            format!("{}:{}", bin_dir.display(), std::env::var("PATH").unwrap()),
+        )
+        .env("INPUT_WORKFLOW", "ci.yml")
+        .env("INPUT_REF_NAME", "main")
+        .env("INPUT_CAPTURE_INPUTS", "run_ci=true")
+        .env(
+            "INPUT_CAPTURE_JOB_FILES",
+            ".github/actionspec-fragments/build.json\n.github/actionspec-fragments/tests.json",
+        )
+        .env("INPUT_CAPTURE_FILE", &capture_file)
+        .env("GITHUB_OUTPUT", &output_file)
+        .env("CAPTURE_ARGS_LOG", &args_log)
+        .status()
+        .unwrap();
+
+    assert!(status.success());
+    assert!(capture_file.exists());
+
+    let outputs = fs::read_to_string(&output_file).unwrap();
+    assert!(outputs.contains(&format!("capture-path={}", capture_file.display())));
+    assert!(!outputs.contains("report-path="));
+    assert!(!outputs.contains("dashboard-path="));
+
+    let args = fs::read_to_string(&args_log).unwrap();
+    assert!(args.contains("--workflow ci.yml"));
+    assert!(args.contains("--ref main"));
+    assert!(args.contains("--input run_ci=true"));
+    assert!(args.contains("--job-file .github/actionspec-fragments/build.json"));
+    assert!(args.contains("--job-file .github/actionspec-fragments/tests.json"));
+}

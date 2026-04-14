@@ -9,6 +9,7 @@ use serde_yaml::{Mapping, Value};
 use walkdir::WalkDir;
 
 use crate::errors::AppError;
+use crate::fs_utils::write_pretty_json_file;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidateCallersOptions {
@@ -361,14 +362,7 @@ pub fn write_workflow_call_report(
     report: &WorkflowCallReport,
     path: &Path,
 ) -> Result<(), AppError> {
-    if let Some(parent) = path
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-    {
-        fs::create_dir_all(parent)?;
-    }
-    fs::write(path, serde_json::to_string_pretty(report)?)?;
-    Ok(())
+    write_pretty_json_file(report, path)
 }
 
 pub fn validate_workflow_callers(

@@ -3,11 +3,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use glob::glob;
-
 use crate::contracts::{declaration_schema_path, workflow_schema_path};
 use crate::discovery::find_declaration;
 use crate::errors::AppError;
+use crate::fs_utils::{resolve_json_input_paths, write_pretty_json_file};
 use crate::types::{
     ActualValidationReport, ValidationReport, ValidationStatus, WorkflowJobRecord,
     WorkflowRunEnvelope,
@@ -59,72 +58,13 @@ fn assert_readable(path: &Path) -> Result<(), AppError> {
     Ok(())
 }
 
-fn collect_directory_actuals(path: &Path) -> Result<Vec<PathBuf>, AppError> {
-    let mut actual_paths = fs::read_dir(path)?
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|entry| entry.is_file())
-        .filter(|entry| entry.extension().and_then(|value| value.to_str()) == Some("json"))
-        .collect::<Vec<_>>();
-
-    actual_paths.sort();
-
-    if actual_paths.is_empty() {
-        return Err(AppError::NoActualFilesFound(path.to_path_buf()));
-    }
-
-    Ok(actual_paths)
-}
-
-fn has_glob_pattern(path: &Path) -> bool {
-    let path = path.to_string_lossy();
-    path.contains('*') || path.contains('?') || path.contains('[')
-}
-
-fn collect_glob_actuals(path: &Path) -> Result<Vec<PathBuf>, AppError> {
-    let pattern = path.to_string_lossy().into_owned();
-    let mut actual_paths = glob(&pattern)?
-        .filter_map(Result::ok)
-        .filter(|entry| entry.is_file())
-        .collect::<Vec<_>>();
-
-    actual_paths.sort();
-
-    if actual_paths.is_empty() {
-        return Err(AppError::NoActualGlobMatches(pattern));
-    }
-
-    Ok(actual_paths)
-}
-
 fn resolve_actual_paths(paths: &[PathBuf]) -> Result<Vec<PathBuf>, AppError> {
-    if paths.is_empty() {
-        return Err(AppError::MissingActualPaths);
-    }
-
-    // Resolve every supported input form into a deterministic, de-duplicated file list so
-    // repeated explicit paths or overlapping globs do not trigger duplicate validations.
-    let mut resolved_paths = BTreeSet::new();
-    for path in paths {
-        if path.is_dir() {
-            resolved_paths.extend(collect_directory_actuals(path)?);
-            continue;
-        }
-
-        if has_glob_pattern(path) {
-            resolved_paths.extend(collect_glob_actuals(path)?);
-            continue;
-        }
-
-        assert_readable(path)?;
-        resolved_paths.insert(path.to_path_buf());
-    }
-
-    if resolved_paths.is_empty() {
-        return Err(AppError::MissingActualPaths);
-    }
-
-    Ok(resolved_paths.into_iter().collect())
+    resolve_json_input_paths(
+        paths,
+        || AppError::MissingActualPaths,
+        AppError::NoActualFilesFound,
+        AppError::NoActualGlobMatches,
+    )
 }
 
 fn infer_workflow_from_actuals(actuals: &[LoadedActual]) -> Result<String, AppError> {
@@ -321,14 +261,7 @@ pub fn validate_contract(options: ValidateContractOptions) -> Result<(), AppErro
 }
 
 pub fn write_validation_report(report: &ValidationReport, path: &Path) -> Result<(), AppError> {
-    if let Some(parent) = path
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-    {
-        fs::create_dir_all(parent)?;
-    }
-    fs::write(path, serde_json::to_string_pretty(report)?)?;
-    Ok(())
+    write_pretty_json_file(report, path)
 }
 
 pub fn validate_repo_workflow(

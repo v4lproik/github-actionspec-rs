@@ -1,19 +1,41 @@
-name: github-actionspec validate-repo
-description: Validate a normalized GitHub Actions workflow run against a repository-owned CUE declaration.
+name: github-actionspec
+description: Capture or validate normalized GitHub Actions workflow payloads against repository-owned CUE declarations.
 outputs:
+  capture-path:
+    description: Path to the normalized workflow payload written by the action in capture mode.
   report-path:
     description: Path to the JSON validation report written by the action.
   dashboard-path:
     description: Path to the markdown dashboard written by the action.
 inputs:
+  mode:
+    description: Action mode. Supported values are `capture` and `validate-repo`.
+    required: false
+    default: validate-repo
   repo:
     description: Path to the target repository containing .github/actionspec declarations.
     required: false
     default: .
   workflow:
-    description: Workflow file name to validate. Optional when the provided payloads all belong to the same workflow.
+    description: Workflow file name to capture or validate. Optional for validate-repo when the provided payloads all belong to the same workflow.
     required: false
     default: ""
+  ref-name:
+    description: Optional workflow ref recorded in capture mode.
+    required: false
+    default: ""
+  capture-job-files:
+    description: Path to one job fragment JSON file, a directory of fragment JSON files, a glob pattern, or a newline-separated list of those inputs for capture mode.
+    required: false
+    default: .github/actionspec-fragments
+  capture-inputs:
+    description: Optional newline-separated list of KEY=VALUE workflow inputs recorded in capture mode.
+    required: false
+    default: ""
+  capture-file:
+    description: Path where the action should write the normalized workflow payload in capture mode.
+    required: false
+    default: /github/runner_temp/github-actionspec-capture/current/workflow-run.json
   actual:
     description: Path to a normalized workflow run JSON payload, a directory of JSON payloads, a glob pattern, or a newline-separated list of payload paths or glob patterns.
     required: false
@@ -63,12 +85,4 @@ runs:
   image: Dockerfile
   entrypoint: /usr/local/bin/github-actionspec-action
   args:
-    - validate-repo
-    - --repo
-    - ${{ inputs.repo }}
-    - --workflow
-    - ${{ inputs.workflow }}
-    - --actual
-    - ${{ inputs.actual }}
-    - --declarations-dir
-    - ${{ inputs.declarations-dir }}
+    - ${{ inputs.mode }}

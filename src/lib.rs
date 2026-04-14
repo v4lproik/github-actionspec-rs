@@ -4,6 +4,7 @@ pub mod contracts;
 pub mod dashboard;
 pub mod discovery;
 pub mod errors;
+pub mod fs_utils;
 pub mod types;
 pub mod validate;
 pub mod workflow_calls;

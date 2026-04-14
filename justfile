@@ -92,6 +92,9 @@ pr-create-draft base="main":
 discover repo=".":
   {{host-runner}} cargo run -- discover --repo {{repo}}
 
+emit-fragment job result file:
+  {{host-runner}} cargo run -- emit-fragment --job {{job}} --result {{result}} --file {{file}}
+
 capture workflow output job_file ref="":
   if [ -n "{{ref}}" ]; then {{host-runner}} cargo run -- capture --workflow {{workflow}} --ref {{ref}} --job-file {{job_file}} --output {{output}}; else {{host-runner}} cargo run -- capture --workflow {{workflow}} --job-file {{job_file}} --output {{output}}; fi
 

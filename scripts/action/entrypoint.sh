@@ -5,22 +5,27 @@ lower_bool() {
   printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]'
 }
 
-append_dashboard_output_args() {
-  if [ -z "${INPUT_DASHBOARD_OUTPUT_KEYS:-}" ]; then
+append_repeated_args() {
+  value="${1:-}"
+  flag="${2:-}"
+  target_var="${3:-}"
+
+  if [ -z "${value}" ] || [ -z "${flag}" ] || [ -z "${target_var}" ]; then
     return
   fi
 
+  args=""
   old_ifs=$IFS
   IFS='
 ,'
-  for key in ${INPUT_DASHBOARD_OUTPUT_KEYS}; do
-    trimmed="$(printf '%s' "$key" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+  for item in ${value}; do
+    trimmed="$(printf '%s' "$item" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
     [ -n "${trimmed}" ] || continue
-    set -- "$@" --output-key "${trimmed}"
+    args="${args} ${flag} ${trimmed}"
   done
   IFS=$old_ifs
 
-  DASHBOARD_ARGS="$*"
+  eval "${target_var}=\"\${args}\""
 }
 
 write_outputs() {
@@ -29,8 +34,15 @@ write_outputs() {
   fi
 
   {
-    printf 'report-path=%s\n' "$REPORT_FILE"
-    printf 'dashboard-path=%s\n' "$DASHBOARD_FILE"
+    if [ -n "${CAPTURE_FILE:-}" ]; then
+      printf 'capture-path=%s\n' "$CAPTURE_FILE"
+    fi
+    if [ -n "${REPORT_FILE:-}" ]; then
+      printf 'report-path=%s\n' "$REPORT_FILE"
+    fi
+    if [ -n "${DASHBOARD_FILE:-}" ]; then
+      printf 'dashboard-path=%s\n' "$DASHBOARD_FILE"
+    fi
   } >> "${GITHUB_OUTPUT}"
 }
 
@@ -129,35 +141,78 @@ upsert_pr_comment() {
   fi
 }
 
-REPORT_FILE="${INPUT_REPORT_FILE:-.github-actionspec-dashboard/current/validation-report.json}"
-DASHBOARD_FILE="${INPUT_DASHBOARD_FILE:-.github-actionspec-dashboard/current/dashboard.md}"
+MODE="${1:-${INPUT_MODE:-validate-repo}}"
+CAPTURE_FILE=""
+REPORT_FILE=""
+DASHBOARD_FILE=""
 BASELINE_REPORT="${INPUT_BASELINE_REPORT:-}"
 
-mkdir -p "$(dirname "${REPORT_FILE}")" "$(dirname "${DASHBOARD_FILE}")"
+case "${MODE}" in
+  capture)
+    CAPTURE_FILE="${INPUT_CAPTURE_FILE:-/github/runner_temp/github-actionspec-capture/current/workflow-run.json}"
+    mkdir -p "$(dirname "${CAPTURE_FILE}")"
+    CAPTURE_INPUT_ARGS=""
+    CAPTURE_JOB_FILE_ARGS=""
+    append_repeated_args "${INPUT_CAPTURE_INPUTS:-}" "--input" "CAPTURE_INPUT_ARGS"
+    append_repeated_args "${INPUT_CAPTURE_JOB_FILES:-}" "--job-file" "CAPTURE_JOB_FILE_ARGS"
 
-set +e
-github-actionspec "$@" --report-file "${REPORT_FILE}"
-status=$?
-set -e
+    set -- capture
+    [ -n "${INPUT_WORKFLOW:-}" ] && set -- "$@" --workflow "${INPUT_WORKFLOW}"
+    [ -n "${INPUT_REF_NAME:-}" ] && set -- "$@" --ref "${INPUT_REF_NAME}"
+    if [ -n "${CAPTURE_INPUT_ARGS:-}" ]; then
+      # shellcheck disable=SC2086
+      set -- "$@" ${CAPTURE_INPUT_ARGS}
+    fi
+    if [ -n "${CAPTURE_JOB_FILE_ARGS:-}" ]; then
+      # shellcheck disable=SC2086
+      set -- "$@" ${CAPTURE_JOB_FILE_ARGS}
+    fi
+    set -- "$@" --output "${CAPTURE_FILE}"
+    github-actionspec "$@"
+    write_outputs
+    ;;
+  validate-repo)
+    REPORT_FILE="${INPUT_REPORT_FILE:-/github/runner_temp/github-actionspec-dashboard/current/validation-report.json}"
+    DASHBOARD_FILE="${INPUT_DASHBOARD_FILE:-/github/runner_temp/github-actionspec-dashboard/current/dashboard.md}"
 
-if [ -f "${REPORT_FILE}" ]; then
-  set --
-  if [ -n "${BASELINE_REPORT}" ] && [ -f "${BASELINE_REPORT}" ]; then
-    set -- "$@" --baseline "${BASELINE_REPORT}"
-  fi
-  append_dashboard_output_args "$@"
-  if [ -n "${DASHBOARD_ARGS:-}" ]; then
-    # shellcheck disable=SC2086
-    set -- ${DASHBOARD_ARGS}
-  fi
-  github-actionspec dashboard \
-    --current "${REPORT_FILE}" \
-    "$@" \
-    --output "${DASHBOARD_FILE}"
+    mkdir -p "$(dirname "${REPORT_FILE}")" "$(dirname "${DASHBOARD_FILE}")"
 
-  write_outputs
-  write_summary
-  upsert_pr_comment
-fi
+    set --
+    [ -n "${INPUT_REPO:-}" ] && set -- "$@" --repo "${INPUT_REPO}"
+    [ -n "${INPUT_WORKFLOW:-}" ] && set -- "$@" --workflow "${INPUT_WORKFLOW}"
+    [ -n "${INPUT_ACTUAL:-}" ] && set -- "$@" --actual "${INPUT_ACTUAL}"
+    [ -n "${INPUT_DECLARATIONS_DIR:-}" ] && set -- "$@" --declarations-dir "${INPUT_DECLARATIONS_DIR}"
 
-exit "${status}"
+    set +e
+    github-actionspec validate-repo "$@" --report-file "${REPORT_FILE}"
+    status=$?
+    set -e
+
+    if [ -f "${REPORT_FILE}" ]; then
+      set --
+      if [ -n "${BASELINE_REPORT}" ] && [ -f "${BASELINE_REPORT}" ]; then
+        set -- "$@" --baseline "${BASELINE_REPORT}"
+      fi
+      DASHBOARD_ARGS=""
+      append_repeated_args "${INPUT_DASHBOARD_OUTPUT_KEYS:-}" "--output-key" "DASHBOARD_ARGS"
+      if [ -n "${DASHBOARD_ARGS:-}" ]; then
+        # shellcheck disable=SC2086
+        set -- "$@" ${DASHBOARD_ARGS}
+      fi
+      github-actionspec dashboard \
+        --current "${REPORT_FILE}" \
+        "$@" \
+        --output "${DASHBOARD_FILE}"
+
+      write_outputs
+      write_summary
+      upsert_pr_comment
+    fi
+
+    exit "${status}"
+    ;;
+  *)
+    printf 'unsupported action mode: %s\n' "${MODE}" >&2
+    exit 1
+    ;;
+esac

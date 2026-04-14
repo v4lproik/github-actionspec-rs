@@ -48,6 +48,9 @@ pub enum AppError {
     #[error("No files matched job fragment glob pattern: {0}")]
     NoCaptureJobGlobMatches(String),
 
+    #[error("Capture workflow name must be non-empty.")]
+    MissingCaptureWorkflow,
+
     #[error("Job fragment is missing a non-empty `job` field: {0}")]
     MissingCaptureJobName(PathBuf),
 
@@ -60,6 +63,34 @@ pub enum AppError {
 
     #[error("Invalid capture input `{0}`. Expected KEY=VALUE.")]
     InvalidCaptureInput(String),
+
+    #[error("Duplicate capture input `{key}` found in `{first}` and `{second}`")]
+    DuplicateCaptureInput {
+        key: String,
+        first: String,
+        second: String,
+    },
+
+    #[error("emit-fragment job name must be non-empty.")]
+    MissingEmitFragmentJob,
+
+    #[error("emit-fragment result must be non-empty.")]
+    MissingEmitFragmentResult,
+
+    #[error("Invalid emit-fragment {field} `{value}`. Expected {expected}.")]
+    InvalidEmitFragmentArgument {
+        field: &'static str,
+        value: String,
+        expected: &'static str,
+    },
+
+    #[error("Duplicate emit-fragment {field} `{key}` found in `{first}` and `{second}`")]
+    DuplicateEmitFragmentArgument {
+        field: &'static str,
+        key: String,
+        first: String,
+        second: String,
+    },
 
     #[error("Reusable workflow validation failed with {failed} issue(s).\n{details}")]
     WorkflowCallerValidationFailures { failed: usize, details: String },

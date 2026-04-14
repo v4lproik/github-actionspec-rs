@@ -12,6 +12,22 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    EmitFragment {
+        #[arg(long)]
+        job: String,
+        #[arg(long)]
+        result: String,
+        #[arg(long = "output")]
+        output: Vec<String>,
+        #[arg(long = "matrix")]
+        matrix: Vec<String>,
+        #[arg(long = "step-conclusion")]
+        step_conclusion: Vec<String>,
+        #[arg(long = "step-output")]
+        step_output: Vec<String>,
+        #[arg(long = "file")]
+        file: PathBuf,
+    },
     Capture {
         #[arg(long)]
         workflow: String,
@@ -77,6 +93,50 @@ pub enum Command {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_emit_fragment_command() {
+        let cli = Cli::try_parse_from([
+            "github-actionspec",
+            "emit-fragment",
+            "--job",
+            "build",
+            "--result",
+            "success",
+            "--output",
+            "artifact=build-ts-service",
+            "--matrix",
+            "app=build-ts-service",
+            "--step-conclusion",
+            "compile=success",
+            "--step-output",
+            "compile.digest=sha256:abc123",
+            "--file",
+            "fragments/build.json",
+        ])
+        .expect("cli should parse");
+
+        match cli.command {
+            Command::EmitFragment {
+                job,
+                result,
+                output,
+                matrix,
+                step_conclusion,
+                step_output,
+                file,
+            } => {
+                assert_eq!(job, "build");
+                assert_eq!(result, "success");
+                assert_eq!(output, vec!["artifact=build-ts-service".to_owned()]);
+                assert_eq!(matrix, vec!["app=build-ts-service".to_owned()]);
+                assert_eq!(step_conclusion, vec!["compile=success".to_owned()]);
+                assert_eq!(step_output, vec!["compile.digest=sha256:abc123".to_owned()]);
+                assert_eq!(file, PathBuf::from("fragments/build.json"));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
 
     #[test]
     fn parses_capture_command() {

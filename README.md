@@ -22,6 +22,7 @@ just lint
 just test
 just ci
 just discover
+just emit-fragment build success .github/actionspec-fragments/build.json
 just capture ci.yml .github/actionspec-artifacts/ci-main.json .github/actionspec-fragments
 just coverage
 just coverage-summary
@@ -41,6 +42,7 @@ just lint
 just ci
 just test
 just discover
+just emit-fragment build success .github/actionspec-fragments/build.json
 just capture ci.yml .github/actionspec-artifacts/ci-main.json .github/actionspec-fragments
 just coverage-summary
 just pr-create
@@ -54,12 +56,67 @@ just dashboard-report target/actionspec/report.json target/actionspec/dashboard.
 
 Commands:
 
+- `github-actionspec emit-fragment --job <name> --result <status> --file <fragment.json>`
 - `github-actionspec capture --workflow <name> --job-file <file-dir-or-glob> --output <actual.json>`
 - `github-actionspec discover --repo <path>`
 - `github-actionspec validate-callers --repo <path> [--report-file <report.json>] [--dry-run]`
 - `github-actionspec validate --schema <file> --schema <file> --contract <file> --actual <file-or-glob>`
 - `github-actionspec validate-repo --repo <path> [--workflow <name>] --actual <file-dir-or-glob> [--report-file <report.json>] [--dry-run]`
 - `github-actionspec dashboard --current <report.json> [--baseline <report.json>] [--output-key <name>] --output <dashboard.md>`
+
+## Emit Fragments
+
+The intended producer flow is one job, one fragment, one final capture step.
+
+`emit-fragment` writes the per-job JSON fragment that `capture` already understands, so calling repositories do not need to hand-roll the shape themselves.
+
+Basic fragment:
+
+```bash
+just emit-fragment build success .github/actionspec-fragments/build.json
+```
+
+Fragment with outputs, matrix values, and step outputs:
+
+```bash
+github-actionspec emit-fragment \
+  --job build \
+  --result success \
+  --output contract_build=build-ts-service \
+  --output artifact_name=build-ts-service-linux-amd64 \
+  --matrix app=build-ts-service \
+  --matrix shard=2 \
+  --step-conclusion compile=success \
+  --step-output compile.digest=sha256:abc123 \
+  --file .github/actionspec-fragments/build.json
+```
+
+This writes:
+
+```json
+{
+  "job": "build",
+  "result": "success",
+  "outputs": {
+    "artifact_name": "build-ts-service-linux-amd64",
+    "contract_build": "build-ts-service"
+  },
+  "matrix": {
+    "app": "build-ts-service",
+    "shard": 2
+  },
+  "steps": {
+    "compile": {
+      "conclusion": "success",
+      "outputs": {
+        "digest": "sha256:abc123"
+      }
+    }
+  }
+}
+```
+
+`--matrix` accepts JSON scalars and arrays when possible, then falls back to strings. This means `shard=2` is written as a number, `enabled=true` as a boolean, and `app=build-ts-service` as a string.
 
 ## Capture Payloads
 
@@ -299,13 +356,21 @@ github-actionspec dashboard \
 
 ## GitHub Action
 
-This repository also exposes a Docker-based GitHub Action for the common `validate-repo` flow. The action runs the bundled `github-actionspec` binary together with the bundled `cue` runtime, so the calling workflow only needs a checked out repository and a normalized JSON payload.
+This repository also exposes a Docker-based GitHub Action for both `capture` and `validate-repo`. The action runs the bundled `github-actionspec` binary together with the bundled `cue` runtime, so the calling workflow only needs a checked out repository plus either job fragments or a normalized JSON payload.
 
 ```yaml
 - uses: actions/checkout@v6
 
 - name: Validate workflow contracts
   uses: v4lproik/github-actionspec-rs@main
+
+- name: Capture a normalized payload from job fragments
+  uses: v4lproik/github-actionspec-rs@main
+  with:
+    mode: capture
+    workflow: ci.yml
+    ref-name: main
+    capture-job-files: .github/actionspec-fragments
 
 - name: Validate one workflow explicitly
   uses: v4lproik/github-actionspec-rs@main
@@ -314,7 +379,7 @@ This repository also exposes a Docker-based GitHub Action for the common `valida
     actual: .github/actionspec-artifacts/ci-main.json
 ```
 
-By convention, the action defaults to:
+By convention, `validate-repo` mode defaults to:
 
 - `repo: .`
 - `declarations-dir: .github/actionspec`
@@ -331,8 +396,13 @@ That means the shortest setup is just:
 
 Inputs:
 
+- `mode`: action mode. Supported values are `capture` and `validate-repo`. Defaults to `validate-repo`
 - `repo`: target repository root containing `.github/actionspec` declarations. Defaults to `.`
-- `workflow`: workflow file name to validate. Optional when the provided payloads all belong to the same workflow
+- `workflow`: workflow file name to capture or validate. Optional for `validate-repo` when the provided payloads all belong to the same workflow
+- `ref-name`: optional workflow ref recorded in `capture` mode
+- `capture-job-files`: one job fragment JSON file, a directory, a glob pattern, or a newline-separated list of those inputs for `capture` mode. Defaults to `.github/actionspec-fragments`
+- `capture-inputs`: optional newline-separated list of `KEY=VALUE` workflow inputs recorded in `capture` mode
+- `capture-file`: path where the action writes the normalized workflow payload in `capture` mode. Defaults to `/github/runner_temp/github-actionspec-capture/current/workflow-run.json`
 - `actual`: path to one normalized workflow run JSON payload, a directory containing JSON payloads, a glob pattern, or a newline-separated list of payloads and glob patterns. Defaults to `.github/actionspec-artifacts`
 - `declarations-dir`: custom declarations directory. Defaults to `.github/actionspec`
 - `report-file`: path where the action writes the JSON validation report. Defaults to `/github/runner_temp/github-actionspec-dashboard/current/validation-report.json`
@@ -348,6 +418,20 @@ Inputs:
 Examples:
 
 ```yaml
+- name: Capture the workflow payload from job fragments
+  id: actionspec-capture
+  uses: v4lproik/github-actionspec-rs@main
+  with:
+    mode: capture
+    workflow: ci.yml
+    ref-name: ${{ github.ref_name }}
+    capture-inputs: |
+      run_ci=true
+      run_pages=false
+    capture-job-files: |
+      .github/actionspec-fragments/build.json
+      .github/actionspec-fragments/tests.json
+
 - name: Validate one payload
   uses: v4lproik/github-actionspec-rs@main
   with:
@@ -410,6 +494,8 @@ Examples:
       ${{ steps.actionspec.outputs.report-path }}
       ${{ steps.actionspec.outputs.dashboard-path }}
 ```
+
+The capture mode writes `capture-path` to `GITHUB_OUTPUT`. The validate mode writes `report-path` and `dashboard-path`.
 
 To show the difference between the current and previous matrix, download the earlier report artifact before the action step and pass its report JSON through `baseline-report`. The action updates a single PR comment identified by `comment-tag`, with a short status summary followed by the full matrix, so the discussion stays in one place instead of growing a new comment on every push.
 
