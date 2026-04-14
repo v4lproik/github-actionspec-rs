@@ -3,6 +3,8 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
 
+use serde_json::Value;
+
 use crate::errors::AppError;
 use crate::types::{ActualValidationReport, ValidationReport, ValidationStatus};
 
@@ -54,6 +56,14 @@ fn compare_actual(
         ));
     }
 
+    if current.matrix != baseline.matrix {
+        changes.push(format!(
+            "matrix {}->{}",
+            render_matrix_label(baseline.matrix.as_ref()),
+            render_matrix_label(current.matrix.as_ref())
+        ));
+    }
+
     let job_names = baseline
         .jobs
         .keys()
@@ -79,6 +89,29 @@ fn compare_actual(
     } else {
         changes.join("; ")
     }
+}
+
+fn render_matrix_value(value: &Value) -> String {
+    match value {
+        Value::String(inner) => inner.clone(),
+        _ => value.to_string(),
+    }
+}
+
+fn render_matrix_label(matrix: Option<&BTreeMap<String, Value>>) -> String {
+    let Some(matrix) = matrix else {
+        return "-".to_owned();
+    };
+
+    if matrix.is_empty() {
+        return "-".to_owned();
+    }
+
+    matrix
+        .iter()
+        .map(|(key, value)| format!("{key}={}", render_matrix_value(value)))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 pub fn load_validation_report(path: &Path) -> Result<ValidationReport, AppError> {
@@ -132,13 +165,13 @@ pub fn render_dashboard_markdown(
     }
 
     let _ = writeln!(markdown);
-    let _ = write!(markdown, "| Payload | Ref | Status |");
+    let _ = write!(markdown, "| Payload | Ref | Matrix | Status |");
     for job_name in &job_names {
         let _ = write!(markdown, " {} |", job_name);
     }
     let _ = writeln!(markdown, " Delta |");
 
-    let _ = write!(markdown, "| --- | --- | --- |");
+    let _ = write!(markdown, "| --- | --- | --- | --- |");
     for _ in &job_names {
         let _ = write!(markdown, " --- |");
     }
@@ -155,9 +188,10 @@ pub fn render_dashboard_markdown(
     for actual in &current.actuals {
         let _ = write!(
             markdown,
-            "| `{}` | `{}` | `{:?}` |",
+            "| `{}` | `{}` | `{}` | `{:?}` |",
             actual.actual_path.display(),
             actual.ref_name.as_deref().unwrap_or("-"),
+            render_matrix_label(actual.matrix.as_ref()),
             actual.status
         );
         for job_name in &job_names {
@@ -215,6 +249,7 @@ mod tests {
         path: &str,
         ref_name: &str,
         status: ValidationStatus,
+        matrix: Option<&[(&str, Value)]>,
         jobs: &[(&str, &str)],
     ) -> ActualValidationReport {
         ActualValidationReport {
@@ -226,6 +261,12 @@ mod tests {
                 .iter()
                 .map(|(job, result)| (job.to_string(), result.to_string()))
                 .collect(),
+            matrix: matrix.map(|entries| {
+                entries
+                    .iter()
+                    .map(|(key, value)| (key.to_string(), value.clone()))
+                    .collect()
+            }),
             error: None,
         }
     }
@@ -240,12 +281,14 @@ mod tests {
                     "tests/fixtures/ci/ci-main-success.json",
                     "main",
                     ValidationStatus::Passed,
+                    Some(&[("app", Value::String("build-ts-service".to_owned()))]),
                     &[("build", "success"), ("pages", "skipped")],
                 ),
                 actual(
                     "tests/fixtures/ci/ci-build-skipped.json",
                     "main",
                     ValidationStatus::Failed,
+                    Some(&[("app", Value::String("build-ts-service".to_owned()))]),
                     &[("build", "skipped"), ("pages", "skipped")],
                 ),
             ],
@@ -258,12 +301,14 @@ mod tests {
                     "tests/fixtures/ci/ci-main-success.json",
                     "main",
                     ValidationStatus::Passed,
+                    Some(&[("app", Value::String("build-rust-service".to_owned()))]),
                     &[("build", "success"), ("pages", "success")],
                 ),
                 actual(
                     "tests/fixtures/ci/ci-removed.json",
                     "main",
                     ValidationStatus::Passed,
+                    None,
                     &[("build", "success")],
                 ),
             ],
@@ -272,10 +317,15 @@ mod tests {
         let markdown = render_dashboard_markdown(&current, Some(&baseline));
 
         assert!(markdown.contains("Validation Matrix"));
+        assert!(markdown.contains("| Payload | Ref | Matrix | Status | build | pages | Delta |"));
+        assert!(markdown.contains("app=build-ts-service"));
+        assert!(markdown.contains("matrix app=build-rust-service->app=build-ts-service"));
         assert!(markdown.contains("ci-main-success.json"));
         assert!(markdown.contains("pages success->skipped"));
         assert!(
-            markdown.contains("| `tests/fixtures/ci/ci-build-skipped.json` | `main` | `Failed` |")
+            markdown.contains(
+                "| `tests/fixtures/ci/ci-build-skipped.json` | `main` | `app=build-ts-service` | `Failed` |"
+            )
         );
         assert!(markdown.contains(" new |"));
         assert!(markdown.contains("Removed Since Baseline"));

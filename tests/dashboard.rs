@@ -5,6 +5,8 @@ use tempfile::tempdir;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
+use serde_json::Value;
+
 fn actual(path: &str, status: ValidationStatus, jobs: &[(&str, &str)]) -> ActualValidationReport {
     ActualValidationReport {
         actual_path: PathBuf::from(path),
@@ -15,6 +17,10 @@ fn actual(path: &str, status: ValidationStatus, jobs: &[(&str, &str)]) -> Actual
             .iter()
             .map(|(name, result)| (name.to_string(), result.to_string()))
             .collect::<BTreeMap<_, _>>(),
+        matrix: Some(BTreeMap::from([(
+            "app".to_string(),
+            Value::String("build-ts-service".to_owned()),
+        )])),
         error: None,
     }
 }
@@ -69,6 +75,7 @@ fn dashboard_cli_writes_markdown_with_diff() {
 
     let markdown = std::fs::read_to_string(output).unwrap();
     assert!(markdown.contains("Validation Matrix"));
+    assert!(markdown.contains("app=build-ts-service"));
     assert!(markdown.contains("status Failed->Passed"));
     assert!(markdown.contains("build skipped->success"));
 }

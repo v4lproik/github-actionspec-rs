@@ -268,6 +268,11 @@ pub fn validate_repo_workflow(
 
     for actual_path in actual_paths {
         let envelope = read_workflow_run(&actual_path)?;
+        let matrix = envelope
+            .run
+            .jobs
+            .values()
+            .find_map(|job| job.matrix.clone());
         let jobs = envelope
             .run
             .jobs
@@ -295,6 +300,7 @@ pub fn validate_repo_workflow(
             ref_name: envelope.run.ref_name,
             status,
             jobs,
+            matrix,
             error,
         });
     }

@@ -125,6 +125,8 @@ github-actionspec validate \
   --actual .github/actionspec-artifacts/build-ts-service.json
 ```
 
+When you generate a validation report or dashboard, the matrix labels are preserved and rendered so the PR comment can show which variant changed, for example `app=build-ts-service, target=linux-amd64`.
+
 ## GitHub Action
 
 This repository also exposes a Docker-based GitHub Action for the common `validate-repo` flow. The action runs the bundled `github-actionspec` binary together with the bundled `cue` runtime, so the calling workflow only needs a checked out repository and a normalized JSON payload.
