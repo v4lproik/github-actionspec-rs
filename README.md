@@ -74,6 +74,57 @@ run: #WorkflowRun & {
 }
 ```
 
+Matching normalized payload:
+
+```json
+{
+  "run": {
+    "workflow": "build.yml",
+    "jobs": {
+      "build": {
+        "result": "success",
+        "matrix": {
+          "app": "build-ts-service"
+        },
+        "outputs": {
+          "contract_build": "build-ts-service"
+        }
+      }
+    }
+  }
+}
+```
+
+If the workflow emits a different output for that same matrix entry, validation fails. For example, this payload should be rejected because the matrix variant and the emitted contract name diverge:
+
+```json
+{
+  "run": {
+    "workflow": "build.yml",
+    "jobs": {
+      "build": {
+        "result": "success",
+        "matrix": {
+          "app": "build-ts-service"
+        },
+        "outputs": {
+          "contract_build": "contract-build"
+        }
+      }
+    }
+  }
+}
+```
+
+You can validate that pattern locally with:
+
+```bash
+github-actionspec validate \
+  --schema schema/workflow_run.cue \
+  --contract .github/actionspec/build/main.cue \
+  --actual .github/actionspec-artifacts/build-ts-service.json
+```
+
 ## GitHub Action
 
 This repository also exposes a Docker-based GitHub Action for the common `validate-repo` flow. The action runs the bundled `github-actionspec` binary together with the bundled `cue` runtime, so the calling workflow only needs a checked out repository and a normalized JSON payload.
@@ -152,6 +203,15 @@ Examples:
     repo: .
     workflow: ci.yml
     actual: .github/actionspec-artifacts/**/*.json
+
+- name: Validate matrix payloads for a build workflow
+  uses: v4lproik/github-actionspec-rs@main
+  with:
+    repo: .
+    workflow: build.yml
+    actual: |
+      .github/actionspec-artifacts/build-ts-service.json
+      .github/actionspec-artifacts/build-rust-service.json
 
 - name: Validate, diff against a previous report, and comment on the PR
   id: actionspec
