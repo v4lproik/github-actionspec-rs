@@ -20,6 +20,8 @@ fn normalize_actual_inputs(actuals: Vec<PathBuf>) -> Vec<PathBuf> {
     actuals
         .into_iter()
         .flat_map(|actual| {
+            // The GitHub Action accepts newline-delimited payload inputs, so normalize them before
+            // handing control to the validation layer.
             let actual = actual.to_string_lossy();
             actual
                 .lines()
@@ -109,7 +111,7 @@ mod tests {
     #[test]
     fn normalize_actual_inputs_splits_newline_separated_values() {
         let actuals = normalize_actual_inputs(vec![PathBuf::from(
-            "fixtures/one.json\nfixtures/two.json\n",
+            "fixtures/one.json\n\n fixtures/two.json \n",
         )]);
 
         assert_eq!(
