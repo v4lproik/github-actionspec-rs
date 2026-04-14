@@ -19,7 +19,10 @@ RUN cargo build --locked --release
 
 FROM golang:1.24-bookworm AS cue-builder
 
-ARG CUE_VERSION
+# Keep the action import path working when callers build the Docker action
+# without passing build args, while still letting repo-owned `just` commands
+# override the version from `.mise.toml`.
+ARG CUE_VERSION=v0.15.0
 RUN GOBIN=/cue-bin go install cuelang.org/go/cmd/cue@${CUE_VERSION}
 
 FROM debian:bookworm-slim AS runtime
