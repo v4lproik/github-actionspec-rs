@@ -116,6 +116,32 @@ If the workflow emits a different output for that same matrix entry, validation 
 }
 ```
 
+Cross-job invariants work the same way. This contract says the `publish` job must reuse the exact image tag emitted by `build`:
+
+```cue
+package actionspec
+
+run: #WorkflowRun & {
+  workflow: "release.yml"
+  jobs: {
+    build: {
+      result: "success"
+      outputs: {
+        image_tag: string
+      }
+    }
+    publish: {
+      result: "success"
+      outputs: {
+        published_tag: run.jobs.build.outputs.image_tag
+      }
+    }
+  }
+}
+```
+
+That pattern is useful when one workflow job promotes an artifact, image tag, or contract name produced by an earlier job and you want the contract to reject drift between them.
+
 You can validate that pattern locally with:
 
 ```bash
