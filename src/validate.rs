@@ -121,22 +121,18 @@ fn resolve_actual_paths(paths: &[PathBuf]) -> Result<Vec<PathBuf>, AppError> {
 }
 
 fn infer_workflow_from_actuals(actuals: &[LoadedActual]) -> Result<String, AppError> {
-    let mut workflows = BTreeSet::new();
+    let workflows = actuals
+        .iter()
+        .map(|actual| actual.envelope.run.workflow.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
 
-    for actual in actuals {
-        workflows.insert(actual.envelope.run.workflow.clone());
+    match workflows.as_slice() {
+        [workflow] => Ok(workflow.clone()),
+        [] => Err(AppError::MissingActualPaths),
+        _ => Err(AppError::AmbiguousActualWorkflows(workflows.join(", "))),
     }
-
-    if workflows.len() == 1 {
-        return Ok(workflows
-            .into_iter()
-            .next()
-            .expect("single workflow should exist"));
-    }
-
-    Err(AppError::AmbiguousActualWorkflows(
-        workflows.into_iter().collect::<Vec<_>>().join(", "),
-    ))
 }
 
 fn read_workflow_run(path: &Path) -> Result<WorkflowRunEnvelope, AppError> {

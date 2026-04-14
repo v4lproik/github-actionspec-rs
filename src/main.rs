@@ -18,20 +18,22 @@ fn main() {
 }
 
 fn normalize_actual_inputs(actuals: Vec<PathBuf>) -> Vec<PathBuf> {
-    actuals
-        .into_iter()
-        .flat_map(|actual| {
-            // The GitHub Action accepts newline-delimited payload inputs, so normalize them before
-            // handing control to the validation layer.
-            let actual = actual.to_string_lossy();
+    let mut normalized = Vec::new();
+
+    for actual in actuals {
+        // The GitHub Action accepts newline-delimited payload inputs, so normalize them before
+        // handing control to the validation layer.
+        let actual = actual.to_string_lossy();
+        normalized.extend(
             actual
                 .lines()
                 .map(str::trim)
                 .filter(|segment| !segment.is_empty())
-                .map(PathBuf::from)
-                .collect::<Vec<_>>()
-        })
-        .collect()
+                .map(PathBuf::from),
+        );
+    }
+
+    normalized
 }
 
 fn summarize_validation_failures(report: &github_actionspec_rs::types::ValidationReport) -> String {
