@@ -305,6 +305,112 @@ exit 1
 }
 
 #[test]
+fn action_entrypoint_emits_fragment_and_writes_fragment_output() {
+    let temp = tempdir().unwrap();
+    let bin_dir = temp.path().join("bin");
+    fs::create_dir_all(&bin_dir).unwrap();
+
+    write_executable(
+        &bin_dir.join("github-actionspec"),
+        r#"#!/bin/sh
+set -eu
+cmd="$1"
+shift
+if [ "$cmd" = "emit-fragment" ]; then
+  output=""
+  args_log=""
+  prev=""
+  for arg in "$@"; do
+    if [ "$prev" = "--file" ]; then
+      output="$arg"
+    fi
+    args_log="$args_log $arg"
+    prev="$arg"
+  done
+  printf '%s\n' "$args_log" > "${EMIT_ARGS_LOG}"
+  mkdir -p "$(dirname "$output")"
+  cat > "$output" <<'EOF'
+{
+  "job": "build",
+  "result": "success",
+  "outputs": {
+    "contract_build": "build-ts-service"
+  },
+  "matrix": {
+    "app": "build-ts-service"
+  },
+  "steps": {
+    "compile": {
+      "conclusion": "success",
+      "outputs": {
+        "digest": "sha256:abc123"
+      }
+    }
+  }
+}
+EOF
+  exit 0
+fi
+if [ "$cmd" = "dashboard" ]; then
+  echo "dashboard should not run in emit-fragment mode" >&2
+  exit 7
+fi
+exit 1
+"#,
+    );
+
+    let fragment_file = temp
+        .path()
+        .join(".github-actionspec-fragments/current/build.json");
+    let output_file = temp.path().join("github_output.txt");
+    let args_log = temp.path().join("emit-args.log");
+
+    fs::write(&args_log, "").unwrap();
+
+    let status = Command::new("/bin/sh")
+        .arg("scripts/action/entrypoint.sh")
+        .arg("emit-fragment")
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .env(
+            "PATH",
+            format!("{}:{}", bin_dir.display(), std::env::var("PATH").unwrap()),
+        )
+        .env("INPUT_EMIT_JOB", "build")
+        .env("INPUT_EMIT_RESULT", "success")
+        .env(
+            "INPUT_EMIT_OUTPUTS",
+            "contract_build=build-ts-service\nartifact_name=build-ts-service-linux-amd64",
+        )
+        .env("INPUT_EMIT_MATRIX", "app=build-ts-service")
+        .env("INPUT_EMIT_STEP_CONCLUSIONS", "compile=success")
+        .env("INPUT_EMIT_STEP_OUTPUTS", "compile.digest=sha256:abc123")
+        .env("INPUT_EMIT_FILE", &fragment_file)
+        .env("GITHUB_OUTPUT", &output_file)
+        .env("EMIT_ARGS_LOG", &args_log)
+        .status()
+        .unwrap();
+
+    assert!(status.success());
+    assert!(fragment_file.exists());
+
+    let outputs = fs::read_to_string(&output_file).unwrap();
+    assert!(outputs.contains(&format!("fragment-path={}", fragment_file.display())));
+    assert!(!outputs.contains("capture-path="));
+    assert!(!outputs.contains("report-path="));
+    assert!(!outputs.contains("dashboard-path="));
+
+    let args = fs::read_to_string(&args_log).unwrap();
+    assert!(args.contains("--job build"));
+    assert!(args.contains("--result success"));
+    assert!(args.contains("--output contract_build=build-ts-service"));
+    assert!(args.contains("--output artifact_name=build-ts-service-linux-amd64"));
+    assert!(args.contains("--matrix app=build-ts-service"));
+    assert!(args.contains("--step-conclusion compile=success"));
+    assert!(args.contains("--step-output compile.digest=sha256:abc123"));
+    assert!(args.contains(&format!("--file {}", fragment_file.display())));
+}
+
+#[test]
 fn action_entrypoint_captures_workflow_payload_and_writes_capture_output() {
     let temp = tempdir().unwrap();
     let bin_dir = temp.path().join("bin");

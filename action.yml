@@ -1,6 +1,8 @@
 name: github-actionspec
 description: Capture or validate normalized GitHub Actions workflow payloads against repository-owned CUE declarations.
 outputs:
+  fragment-path:
+    description: Path to the job fragment JSON written by the action in emit-fragment mode.
   capture-path:
     description: Path to the normalized workflow payload written by the action in capture mode.
   report-path:
@@ -9,9 +11,37 @@ outputs:
     description: Path to the markdown dashboard written by the action.
 inputs:
   mode:
-    description: Action mode. Supported values are `capture` and `validate-repo`.
+    description: Action mode. Supported values are `emit-fragment`, `capture`, and `validate-repo`.
     required: false
     default: validate-repo
+  emit-job:
+    description: Job id to write into the fragment in emit-fragment mode.
+    required: false
+    default: ""
+  emit-result:
+    description: Job result to write into the fragment in emit-fragment mode.
+    required: false
+    default: ""
+  emit-outputs:
+    description: Optional newline-separated list of KEY=VALUE job outputs for emit-fragment mode.
+    required: false
+    default: ""
+  emit-matrix:
+    description: Optional newline-separated list of KEY=VALUE matrix entries for emit-fragment mode.
+    required: false
+    default: ""
+  emit-step-conclusions:
+    description: Optional newline-separated list of STEP_ID=CONCLUSION values for emit-fragment mode.
+    required: false
+    default: ""
+  emit-step-outputs:
+    description: Optional newline-separated list of STEP_ID.OUTPUT_NAME=VALUE values for emit-fragment mode.
+    required: false
+    default: ""
+  emit-file:
+    description: Path where the action should write the job fragment JSON in emit-fragment mode.
+    required: false
+    default: /github/runner_temp/github-actionspec-fragments/current/job.json
   repo:
     description: Path to the target repository containing .github/actionspec declarations.
     required: false

@@ -45,6 +45,9 @@ write_outputs() {
   fi
 
   {
+    if [ -n "${FRAGMENT_FILE:-}" ]; then
+      printf 'fragment-path=%s\n' "$FRAGMENT_FILE"
+    fi
     if [ -n "${CAPTURE_FILE:-}" ]; then
       printf 'capture-path=%s\n' "$CAPTURE_FILE"
     fi
@@ -153,12 +156,48 @@ upsert_pr_comment() {
 }
 
 MODE="${1:-${INPUT_MODE:-validate-repo}}"
+FRAGMENT_FILE=""
 CAPTURE_FILE=""
 REPORT_FILE=""
 DASHBOARD_FILE=""
 BASELINE_REPORT="${INPUT_BASELINE_REPORT:-}"
 
 case "${MODE}" in
+  emit-fragment)
+    FRAGMENT_FILE="${INPUT_EMIT_FILE:-/github/runner_temp/github-actionspec-fragments/current/job.json}"
+    mkdir -p "$(dirname "${FRAGMENT_FILE}")"
+    EMIT_OUTPUT_ARGS=""
+    EMIT_MATRIX_ARGS=""
+    EMIT_STEP_CONCLUSION_ARGS=""
+    EMIT_STEP_OUTPUT_ARGS=""
+    append_repeated_args "${INPUT_EMIT_OUTPUTS:-}" "--output" "EMIT_OUTPUT_ARGS"
+    append_repeated_args "${INPUT_EMIT_MATRIX:-}" "--matrix" "EMIT_MATRIX_ARGS"
+    append_repeated_args "${INPUT_EMIT_STEP_CONCLUSIONS:-}" "--step-conclusion" "EMIT_STEP_CONCLUSION_ARGS"
+    append_repeated_args "${INPUT_EMIT_STEP_OUTPUTS:-}" "--step-output" "EMIT_STEP_OUTPUT_ARGS"
+
+    set -- emit-fragment
+    [ -n "${INPUT_EMIT_JOB:-}" ] && set -- "$@" --job "${INPUT_EMIT_JOB}"
+    [ -n "${INPUT_EMIT_RESULT:-}" ] && set -- "$@" --result "${INPUT_EMIT_RESULT}"
+    if [ -n "${EMIT_OUTPUT_ARGS:-}" ]; then
+      # shellcheck disable=SC2086
+      set -- "$@" ${EMIT_OUTPUT_ARGS}
+    fi
+    if [ -n "${EMIT_MATRIX_ARGS:-}" ]; then
+      # shellcheck disable=SC2086
+      set -- "$@" ${EMIT_MATRIX_ARGS}
+    fi
+    if [ -n "${EMIT_STEP_CONCLUSION_ARGS:-}" ]; then
+      # shellcheck disable=SC2086
+      set -- "$@" ${EMIT_STEP_CONCLUSION_ARGS}
+    fi
+    if [ -n "${EMIT_STEP_OUTPUT_ARGS:-}" ]; then
+      # shellcheck disable=SC2086
+      set -- "$@" ${EMIT_STEP_OUTPUT_ARGS}
+    fi
+    set -- "$@" --file "${FRAGMENT_FILE}"
+    github-actionspec "$@"
+    write_outputs
+    ;;
   capture)
     CAPTURE_FILE="${INPUT_CAPTURE_FILE:-/github/runner_temp/github-actionspec-capture/current/workflow-run.json}"
     mkdir -p "$(dirname "${CAPTURE_FILE}")"

@@ -356,13 +356,21 @@ github-actionspec dashboard \
 
 ## GitHub Action
 
-This repository also exposes a Docker-based GitHub Action for both `capture` and `validate-repo`. The action runs the bundled `github-actionspec` binary together with the bundled `cue` runtime, so the calling workflow only needs a checked out repository plus either job fragments or a normalized JSON payload.
+This repository also exposes a Docker-based GitHub Action for `emit-fragment`, `capture`, and `validate-repo`. The action runs the bundled `github-actionspec` binary together with the bundled `cue` runtime, so the calling workflow only needs a checked out repository plus either per-job fields, job fragments, or a normalized JSON payload.
 
 ```yaml
 - uses: actions/checkout@v6
 
 - name: Validate workflow contracts
   uses: v4lproik/github-actionspec-rs@main
+
+- name: Emit one job fragment
+  uses: v4lproik/github-actionspec-rs@main
+  with:
+    mode: emit-fragment
+    emit-job: build
+    emit-result: success
+    emit-outputs: contract_build=build-ts-service
 
 - name: Capture a normalized payload from job fragments
   uses: v4lproik/github-actionspec-rs@main
@@ -396,7 +404,14 @@ That means the shortest setup is just:
 
 Inputs:
 
-- `mode`: action mode. Supported values are `capture` and `validate-repo`. Defaults to `validate-repo`
+- `mode`: action mode. Supported values are `emit-fragment`, `capture`, and `validate-repo`. Defaults to `validate-repo`
+- `emit-job`: job id written into the fragment in `emit-fragment` mode
+- `emit-result`: job result written into the fragment in `emit-fragment` mode
+- `emit-outputs`: optional newline-separated list of `KEY=VALUE` job outputs for `emit-fragment` mode
+- `emit-matrix`: optional newline-separated list of `KEY=VALUE` matrix entries for `emit-fragment` mode
+- `emit-step-conclusions`: optional newline-separated list of `STEP_ID=CONCLUSION` values for `emit-fragment` mode
+- `emit-step-outputs`: optional newline-separated list of `STEP_ID.OUTPUT_NAME=VALUE` values for `emit-fragment` mode
+- `emit-file`: path where the action writes the job fragment JSON in `emit-fragment` mode. Defaults to `/github/runner_temp/github-actionspec-fragments/current/job.json`
 - `repo`: target repository root containing `.github/actionspec` declarations. Defaults to `.`
 - `workflow`: workflow file name to capture or validate. Optional for `validate-repo` when the provided payloads all belong to the same workflow
 - `ref-name`: optional workflow ref recorded in `capture` mode
@@ -416,6 +431,27 @@ Inputs:
 - `github-token`: token used for PR comment upserts when `comment-pr` is enabled
 
 Examples:
+
+```yaml
+- name: Emit one fragment directly from a job
+  id: actionspec-fragment
+  uses: v4lproik/github-actionspec-rs@main
+  with:
+    mode: emit-fragment
+    emit-job: build
+    emit-result: success
+    emit-outputs: |
+      contract_build=build-ts-service
+      artifact_name=build-ts-service-linux-amd64
+    emit-matrix: |
+      app=build-ts-service
+      shard=2
+    emit-step-conclusions: |
+      compile=success
+    emit-step-outputs: |
+      compile.digest=sha256:abc123
+
+```
 
 ```yaml
 - name: Capture the workflow payload from job fragments
@@ -495,7 +531,7 @@ Examples:
       ${{ steps.actionspec.outputs.dashboard-path }}
 ```
 
-The capture mode writes `capture-path` to `GITHUB_OUTPUT`. The validate mode writes `report-path` and `dashboard-path`.
+The emit-fragment mode writes `fragment-path` to `GITHUB_OUTPUT`. The capture mode writes `capture-path`. The validate mode writes `report-path` and `dashboard-path`.
 
 To show the difference between the current and previous matrix, download the earlier report artifact before the action step and pass its report JSON through `baseline-report`. The action updates a single PR comment identified by `comment-tag`, with a short status summary followed by the full matrix, so the discussion stays in one place instead of growing a new comment on every push.
 
