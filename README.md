@@ -454,6 +454,85 @@ Examples:
 ```
 
 ```yaml
+- name: Emit fragments, capture them, and validate the workflow
+  id: actionspec-detect-changes
+  uses: v4lproik/github-actionspec-rs@main
+  with:
+    mode: emit-fragment
+    emit-job: detect-changes
+    emit-result: success
+    emit-outputs: |
+      run_ci=true
+      run_pages=false
+    emit-file: ${{ runner.temp }}/github-actionspec-e2e/fragments/detect-changes.json
+
+- id: actionspec-lint
+  uses: v4lproik/github-actionspec-rs@main
+  with:
+    mode: emit-fragment
+    emit-job: lint
+    emit-result: success
+    emit-file: ${{ runner.temp }}/github-actionspec-e2e/fragments/lint.json
+
+- id: actionspec-build
+  uses: v4lproik/github-actionspec-rs@main
+  with:
+    mode: emit-fragment
+    emit-job: build
+    emit-result: success
+    emit-file: ${{ runner.temp }}/github-actionspec-e2e/fragments/build.json
+
+- id: actionspec-tests
+  uses: v4lproik/github-actionspec-rs@main
+  with:
+    mode: emit-fragment
+    emit-job: tests
+    emit-result: success
+    emit-file: ${{ runner.temp }}/github-actionspec-e2e/fragments/tests.json
+
+- id: actionspec-docker
+  uses: v4lproik/github-actionspec-rs@main
+  with:
+    mode: emit-fragment
+    emit-job: docker
+    emit-result: success
+    emit-file: ${{ runner.temp }}/github-actionspec-e2e/fragments/docker.json
+
+- id: actionspec-pages
+  uses: v4lproik/github-actionspec-rs@main
+  with:
+    mode: emit-fragment
+    emit-job: pages
+    emit-result: skipped
+    emit-file: ${{ runner.temp }}/github-actionspec-e2e/fragments/pages.json
+
+- name: Capture the emitted fragments into one normalized payload
+  id: actionspec-capture
+  uses: v4lproik/github-actionspec-rs@main
+  with:
+    mode: capture
+    workflow: ci.yml
+    ref-name: main
+    capture-job-files: |
+      ${{ steps.actionspec-detect-changes.outputs.fragment-path }}
+      ${{ steps.actionspec-lint.outputs.fragment-path }}
+      ${{ steps.actionspec-build.outputs.fragment-path }}
+      ${{ steps.actionspec-tests.outputs.fragment-path }}
+      ${{ steps.actionspec-docker.outputs.fragment-path }}
+      ${{ steps.actionspec-pages.outputs.fragment-path }}
+    capture-file: ${{ runner.temp }}/github-actionspec-e2e/current/workflow-run.json
+
+- name: Validate the captured payload
+  uses: v4lproik/github-actionspec-rs@main
+  with:
+    workflow: ci.yml
+    actual: ${{ steps.actionspec-capture.outputs.capture-path }}
+    report-file: ${{ runner.temp }}/github-actionspec-e2e/current/validation-report.json
+    dashboard-file: ${{ runner.temp }}/github-actionspec-e2e/current/dashboard.md
+    write-summary: false
+```
+
+```yaml
 - name: Capture the workflow payload from job fragments
   id: actionspec-capture
   uses: v4lproik/github-actionspec-rs@main

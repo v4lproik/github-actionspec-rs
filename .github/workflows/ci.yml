@@ -123,6 +123,80 @@ jobs:
           tool: just
       - name: Run tests
         run: just test
+      - name: Emit detect-changes fragment through the action
+        id: smoke-detect-changes
+        uses: ./
+        with:
+          mode: emit-fragment
+          emit-job: detect-changes
+          emit-result: success
+          emit-outputs: |
+            run_ci=true
+            run_pages=false
+          emit-file: ${{ runner.temp }}/github-actionspec-e2e/fragments/detect-changes.json
+      - name: Emit lint fragment through the action
+        id: smoke-lint
+        uses: ./
+        with:
+          mode: emit-fragment
+          emit-job: lint
+          emit-result: success
+          emit-file: ${{ runner.temp }}/github-actionspec-e2e/fragments/lint.json
+      - name: Emit build fragment through the action
+        id: smoke-build
+        uses: ./
+        with:
+          mode: emit-fragment
+          emit-job: build
+          emit-result: success
+          emit-file: ${{ runner.temp }}/github-actionspec-e2e/fragments/build.json
+      - name: Emit tests fragment through the action
+        id: smoke-tests
+        uses: ./
+        with:
+          mode: emit-fragment
+          emit-job: tests
+          emit-result: success
+          emit-file: ${{ runner.temp }}/github-actionspec-e2e/fragments/tests.json
+      - name: Emit docker fragment through the action
+        id: smoke-docker
+        uses: ./
+        with:
+          mode: emit-fragment
+          emit-job: docker
+          emit-result: success
+          emit-file: ${{ runner.temp }}/github-actionspec-e2e/fragments/docker.json
+      - name: Emit pages fragment through the action
+        id: smoke-pages
+        uses: ./
+        with:
+          mode: emit-fragment
+          emit-job: pages
+          emit-result: skipped
+          emit-file: ${{ runner.temp }}/github-actionspec-e2e/fragments/pages.json
+      - name: Capture emitted smoke fragments through the action
+        id: smoke-capture
+        uses: ./
+        with:
+          mode: capture
+          workflow: ci.yml
+          ref-name: main
+          capture-job-files: |
+            ${{ steps.smoke-detect-changes.outputs.fragment-path }}
+            ${{ steps.smoke-lint.outputs.fragment-path }}
+            ${{ steps.smoke-build.outputs.fragment-path }}
+            ${{ steps.smoke-tests.outputs.fragment-path }}
+            ${{ steps.smoke-docker.outputs.fragment-path }}
+            ${{ steps.smoke-pages.outputs.fragment-path }}
+          capture-file: ${{ runner.temp }}/github-actionspec-e2e/current/workflow-run.json
+      - name: Validate captured smoke payload through the action
+        uses: ./
+        with:
+          workflow: ci.yml
+          actual: ${{ steps.smoke-capture.outputs.capture-path }}
+          report-file: ${{ runner.temp }}/github-actionspec-e2e/current/validation-report.json
+          dashboard-file: ${{ runner.temp }}/github-actionspec-e2e/current/dashboard.md
+          write-summary: false
       - name: Validate passing fixture directory
         uses: ./
         with:
