@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Workflow Flow | github-actionspec-rs</title>
+    <meta
+      name="description"
+      content="Understand the fragment, capture, validate, and reusable-workflow linting flow in github-actionspec-rs."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Public+Sans:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="site-frame">
+      <section class="hero-shell hero-shell-compact">
+        <div class="page-shell">
+          <header class="site-header">
+            <a class="brand" href="index.html" aria-label="github-actionspec-rs home">
+              <span class="brand-mark">
+                <img class="brand-logo" src="logo-mark.svg" alt="" />
+              </span>
+              <span class="brand-text">github-actionspec-rs</span>
+            </a>
+            <nav class="site-nav" aria-label="Primary">
+              <a href="index.html">Overview</a>
+              <a href="getting-started.html">Getting Started</a>
+              <a class="site-nav-active" href="workflow-flow.html">Workflow Flow</a>
+              <a href="ci-reference.html">CI</a>
+              <a href="reports.html">Reports</a>
+              <a href="https://github.com/v4lproik/github-actionspec-rs">GitHub</a>
+            </nav>
+          </header>
+
+          <main class="page-intro">
+            <p class="eyebrow">Workflow Flow</p>
+            <h1>How the validation model works.</h1>
+            <p class="hero-text">
+              This project does not execute workflows. It validates a normalized description of a
+              workflow run against a contract you declared in <code>CUE</code>.
+            </p>
+          </main>
+        </div>
+      </section>
+
+      <div class="page-shell page-shell-body page-shell-tight">
+        <section class="content-section first-section">
+          <div class="doc-grid">
+            <article class="card card-featured">
+              <p class="card-kicker">In one line</p>
+              <pre><code>expected workflow behavior
+vs
+actual workflow run payload</code></pre>
+            </article>
+            <article class="card">
+              <p class="card-kicker">Important</p>
+              <ul class="doc-list">
+                <li>The tool validates payloads. It does not run the workflow for you.</li>
+                <li>The payload can come from fixtures, local capture, or CI capture.</li>
+                <li>The contract stays in the repository next to the workflow it describes.</li>
+              </ul>
+            </article>
+          </div>
+        </section>
+
+        <section class="content-section">
+          <div class="section-heading">
+            <p class="eyebrow">Capture</p>
+            <h2>Build a normalized payload from job fragments.</h2>
+            <p>
+              The normalized payload is the contract boundary. It is the same shape whether it
+              comes from fixtures, a local capture flow, or a CI run.
+            </p>
+          </div>
+
+          <div class="doc-grid">
+            <article class="code-card">
+              <p class="code-title">Emit one fragment per job</p>
+              <pre><code>github-actionspec emit-fragment \
+  --job build \
+  --result success \
+  --output contract_build=build-ts-service \
+  --matrix app=build-ts-service \
+  --file .github/actionspec-fragments/build.json</code></pre>
+            </article>
+            <article class="code-card">
+              <p class="code-title">Capture them into one payload</p>
+              <pre><code>github-actionspec capture \
+  --workflow ci.yml \
+  --ref main \
+  --job-file .github/actionspec-fragments \
+  --output .github/actionspec-artifacts/ci-main.json</code></pre>
+            </article>
+          </div>
+        </section>
+
+        <section class="content-section">
+          <div class="section-heading">
+            <p class="eyebrow">Validation</p>
+            <h2>Use the right mode for the right job.</h2>
+          </div>
+
+          <div class="doc-grid doc-grid-wide">
+            <article class="card">
+              <p class="card-kicker">`validate-callers`</p>
+              <ul class="doc-list">
+                <li>Checks local reusable workflow interfaces.</li>
+                <li>Validates required inputs and secrets.</li>
+                <li>Validates obvious literal type mismatches.</li>
+                <li>Checks <code>needs.*.outputs.*</code> references.</li>
+              </ul>
+            </article>
+            <article class="card card-featured">
+              <p class="card-kicker">`validate-repo`</p>
+              <ul class="doc-list">
+                <li>Resolves one declaration from the repo.</li>
+                <li>Validates one or more normalized payloads.</li>
+                <li>Accepts files, directories, globs, and newline-separated lists.</li>
+                <li>Produces a JSON report and optional dashboard.</li>
+              </ul>
+            </article>
+            <article class="card">
+              <p class="card-kicker">`dashboard`</p>
+              <ul class="doc-list">
+                <li>Renders a markdown matrix from a report.</li>
+                <li>Can diff against a baseline report.</li>
+                <li>Can filter rendered job outputs by key.</li>
+                <li>Fits well in PR comments and uploaded artifacts.</li>
+              </ul>
+            </article>
+          </div>
+        </section>
+
+        <section class="content-section">
+          <div class="section-heading">
+            <p class="eyebrow">Action usage</p>
+            <h2>Use the same flow in GitHub Actions.</h2>
+          </div>
+
+          <div class="doc-grid">
+            <article class="code-card">
+              <p class="code-title">Capture mode</p>
+              <pre><code>- uses: v4lproik/github-actionspec-rs@main
+  id: actionspec-capture
+  with:
+    mode: capture
+    workflow: ci.yml
+    ref-name: main
+    capture-job-files: |
+      ${{ steps.build.outputs.fragment-path }}
+      ${{ steps.tests.outputs.fragment-path }}
+    capture-file: /github/runner_temp/actionspec/workflow-run.json</code></pre>
+            </article>
+
+            <article class="code-card code-card-dark">
+              <p class="code-title">Validate mode</p>
+              <pre><code>- uses: v4lproik/github-actionspec-rs@main
+  with:
+    repo: .
+    workflow: ci.yml
+    actual: ${{ steps.actionspec-capture.outputs.capture-path }}
+    report-file: /github/runner_temp/actionspec/report.json
+    dashboard-file: /github/runner_temp/actionspec/dashboard.md</code></pre>
+            </article>
+          </div>
+        </section>
+      </div>
+    </div>
+  </body>
+</html>

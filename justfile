@@ -57,6 +57,7 @@ lint:
   just docker-build
   {{docker-runner}} cargo fmt --check
   {{docker-runner}} cargo clippy --all-targets --all-features --locked -- -D warnings
+  {{docker-runner}} cargo run -- validate-callers --repo .
 
 test:
   just docker-build
@@ -81,6 +82,7 @@ ci:
   {{docker-runner}} cargo build --locked
   {{docker-runner}} cargo fmt --check
   {{docker-runner}} cargo clippy --all-targets --all-features --locked -- -D warnings
+  {{docker-runner}} cargo run -- validate-callers --repo .
   {{docker-runner}} cargo test --locked
 
 pr-create base="main":
@@ -114,6 +116,10 @@ validate-repo-report repo workflow actual report:
 validate-repo-report-dry repo workflow actual report:
   just docker-build
   {{docker-runner}} cargo run -- validate-repo --repo {{repo}} --workflow {{workflow}} --actual {{actual}} --report-file {{report}} --dry-run
+
+validate-repo-dashboard repo workflow actual report dashboard baseline="" output_keys="" dry="false":
+  just docker-build
+  status=0; dry_arg=""; if [ "{{dry}}" = "true" ]; then dry_arg=" --dry-run"; fi; if ! eval "{{docker-runner}} cargo run -- validate-repo --repo {{repo}} --workflow {{workflow}} --actual {{actual}} --report-file {{report}}$dry_arg"; then status=$?; fi; if [ -f "{{report}}" ]; then output_key_args="$(printf '%s\n' '{{output_keys}}' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | awk 'NF {printf " --output-key %s", $0}')"; if [ -n "{{baseline}}" ]; then eval "{{docker-runner}} cargo run -- dashboard --current {{report}} --baseline {{baseline}} --output {{dashboard}}$output_key_args"; else eval "{{docker-runner}} cargo run -- dashboard --current {{report}} --output {{dashboard}}$output_key_args"; fi; fi; exit "$status"
 
 dashboard-report current output baseline="" output_keys="":
   just docker-build

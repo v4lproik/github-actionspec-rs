@@ -123,6 +123,54 @@ jobs:
 }
 
 #[test]
+fn reports_reusable_workflow_secret_failures_through_cli() {
+    let repo = tempdir().expect("temp dir should be created");
+
+    write_workflow(
+        repo.path(),
+        ".github/workflows/reusable-deploy.yml",
+        r#"on:
+  workflow_call:
+    secrets:
+      cloud-token:
+        required: true
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+"#,
+    );
+    write_workflow(
+        repo.path(),
+        ".github/workflows/ci.yml",
+        r#"on:
+  pull_request:
+jobs:
+  deploy:
+    uses: ./.github/workflows/reusable-deploy.yml
+    secrets:
+      extra-token: ${{ secrets.EXTRA_TOKEN }}
+"#,
+    );
+
+    let mut command = Command::cargo_bin("github-actionspec").expect("binary should exist");
+    command
+        .arg("validate-callers")
+        .arg("--repo")
+        .arg(repo.path());
+
+    command
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "Reusable workflow validation failed",
+        ))
+        .stderr(predicate::str::contains(
+            "missing required secret `cloud-token`",
+        ))
+        .stderr(predicate::str::contains("unexpected secret `extra-token`"));
+}
+
+#[test]
 fn dry_run_writes_caller_report_without_failing() {
     let repo = tempdir().expect("temp dir should be created");
     let report = repo.path().join("callers-report.json");
@@ -333,5 +381,80 @@ jobs:
             .as_array()
             .map(Vec::len),
         Some(1)
+    );
+}
+
+#[test]
+fn dry_run_report_tracks_reusable_workflow_secret_analysis() {
+    let repo = tempdir().expect("temp dir should be created");
+    let report = repo.path().join("callers-report.json");
+
+    write_workflow(
+        repo.path(),
+        ".github/workflows/reusable-deploy.yml",
+        r#"on:
+  workflow_call:
+    secrets:
+      cloud-token:
+        required: true
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+"#,
+    );
+    write_workflow(
+        repo.path(),
+        ".github/workflows/ci.yml",
+        r#"on:
+  pull_request:
+jobs:
+  deploy-explicit:
+    uses: ./.github/workflows/reusable-deploy.yml
+    secrets:
+      cloud-token: ${{ secrets.CLOUD_TOKEN }}
+  deploy-inherited:
+    uses: ./.github/workflows/reusable-deploy.yml
+    secrets: inherit
+"#,
+    );
+
+    let mut command = Command::cargo_bin("github-actionspec").expect("binary should exist");
+    command
+        .arg("validate-callers")
+        .arg("--repo")
+        .arg(repo.path())
+        .arg("--report-file")
+        .arg(&report)
+        .arg("--dry-run");
+
+    command.assert().success();
+
+    let report: Value =
+        serde_json::from_str(&fs::read_to_string(report).expect("report should be readable"))
+            .expect("report should be valid json");
+    assert_eq!(report["issues"].as_array().map(Vec::len), Some(0));
+    assert_eq!(
+        report["workflows"][0]["calls"][0]["provided_secrets"]
+            .as_array()
+            .map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(
+        report["workflows"][0]["calls"][0]["provided_secrets"][0].as_str(),
+        Some("cloud-token")
+    );
+    assert_eq!(
+        report["workflows"][0]["calls"][0]["inherits_secrets"].as_bool(),
+        None
+    );
+    assert_eq!(
+        report["workflows"][0]["calls"][1]["provided_secrets"]
+            .as_array()
+            .map(Vec::len),
+        None
+    );
+    assert_eq!(
+        report["workflows"][0]["calls"][1]["inherits_secrets"].as_bool(),
+        Some(true)
     );
 }

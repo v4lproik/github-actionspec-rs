@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CI Reference | github-actionspec-rs</title>
+    <meta
+      name="description"
+      content="Reference for how github-actionspec-rs is used in this repository's CI pipeline."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Public+Sans:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="site-frame">
+      <section class="hero-shell hero-shell-compact">
+        <div class="page-shell">
+          <header class="site-header">
+            <a class="brand" href="index.html" aria-label="github-actionspec-rs home">
+              <span class="brand-mark">
+                <img class="brand-logo" src="logo-mark.svg" alt="" />
+              </span>
+              <span class="brand-text">github-actionspec-rs</span>
+            </a>
+            <nav class="site-nav" aria-label="Primary">
+              <a href="index.html">Overview</a>
+              <a href="getting-started.html">Getting Started</a>
+              <a href="workflow-flow.html">Workflow Flow</a>
+              <a class="site-nav-active" href="ci-reference.html">CI</a>
+              <a href="reports.html">Reports</a>
+              <a href="https://github.com/v4lproik/github-actionspec-rs">GitHub</a>
+            </nav>
+          </header>
+
+          <main class="page-intro">
+            <p class="eyebrow">CI Reference</p>
+            <h1>How this repo uses the library.</h1>
+            <p class="hero-text">
+              The repository acts as the reference integration: static contracts, reusable workflow
+              linting, fixture validation, PR matrix comments, and runtime-backed capture on
+              <code>main</code>.
+            </p>
+          </main>
+        </div>
+      </section>
+
+      <div class="page-shell page-shell-body page-shell-tight">
+        <section class="content-section first-section">
+          <div class="section-heading">
+            <p class="eyebrow">Pipeline order</p>
+            <h2>Execution order stays explicit.</h2>
+          </div>
+
+          <article class="card">
+            <ol class="doc-list doc-list-numbered">
+              <li><code>detect-changes</code></li>
+              <li><code>lint</code> with <code>just lint</code> and <code>validate-callers</code></li>
+              <li><code>build</code></li>
+              <li><code>tests</code></li>
+              <li><code>remote-action-integration</code> on pushes to <code>main</code></li>
+              <li><code>docker</code></li>
+              <li><code>pages</code></li>
+              <li><code>runtime-contract-validation</code> on pushes to <code>main</code></li>
+            </ol>
+          </article>
+        </section>
+
+        <section class="content-section">
+          <div class="section-heading">
+            <p class="eyebrow">Tests job</p>
+            <h2>Fixture-driven validation and PR matrix output.</h2>
+          </div>
+
+          <div class="doc-grid">
+            <article class="card">
+              <ul class="doc-list">
+                <li>Runs <code>just test</code>.</li>
+                <li>Exercises action-level emit, capture, and validate smoke paths.</li>
+                <li>Validates passing and failing fixture payloads against the repo contract.</li>
+                <li>Builds a markdown matrix dashboard from the fixture report.</li>
+              </ul>
+            </article>
+
+            <article class="card card-featured">
+              <ul class="doc-list">
+                <li>Uploads <code>ci-matrix-dashboard</code>.</li>
+                <li>Looks up the latest baseline artifact.</li>
+                <li>Diffs the current matrix against that baseline.</li>
+                <li>Updates one PR comment with the rendered matrix.</li>
+              </ul>
+            </article>
+          </div>
+        </section>
+
+        <section class="content-section">
+          <div class="section-heading">
+            <p class="eyebrow">Runtime-backed validation</p>
+            <h2>Validate the real CI run on <code>main</code>.</h2>
+            <p>
+              This is the bridge from modeled fixture tests to actual workflow-state validation.
+            </p>
+          </div>
+
+          <div class="doc-grid">
+            <article class="code-card">
+              <p class="code-title">What the job captures</p>
+              <pre><code>detect-changes.result
+lint.result
+build.result
+tests.result
+docker.result
+pages.result
+
+detect-changes.outputs.run_ci
+detect-changes.outputs.run_pages</code></pre>
+            </article>
+
+            <article class="code-card code-card-dark">
+              <p class="code-title">What it produces</p>
+              <ul class="doc-list doc-list-inverse">
+                <li>A normalized captured payload.</li>
+                <li>A JSON validation report.</li>
+                <li>A markdown dashboard.</li>
+                <li>A <code>ci-runtime-contract</code> artifact.</li>
+              </ul>
+            </article>
+          </div>
+        </section>
+
+        <section class="content-section">
+          <div class="section-heading">
+            <p class="eyebrow">Rules</p>
+            <h2>CI should call <code>just</code>.</h2>
+            <p>
+              This repo keeps the command surface centralized. Workflows should use repository
+              recipes instead of open-coded cargo, gh, or mise command chains.
+            </p>
+          </div>
+
+          <article class="card">
+            <ul class="doc-list">
+              <li><code>just lint</code> for fmt, clippy, and reusable workflow caller validation.</li>
+              <li><code>just test</code> for Rust tests.</li>
+              <li><code>just runtime-ci</code> for runtime image verification.</li>
+              <li><code>just coverage-ci</code> for lcov generation in CI.</li>
+            </ul>
+          </article>
+        </section>
+      </div>
+    </div>
+  </body>
+</html>

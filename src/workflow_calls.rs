@@ -42,6 +42,10 @@ pub struct WorkflowCallAnalysisCall {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub provided_inputs: BTreeMap<String, Value>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub provided_secrets: Vec<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub inherits_secrets: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub referenced_outputs: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub issues: Vec<String>,
@@ -59,6 +63,7 @@ pub struct CallerValidationIssue {
 struct WorkflowCallContract {
     relative_path: PathBuf,
     inputs: BTreeMap<String, WorkflowCallInput>,
+    secrets: BTreeMap<String, WorkflowCallSecret>,
     outputs: BTreeSet<String>,
 }
 
@@ -67,6 +72,11 @@ struct WorkflowCallInput {
     input_type: WorkflowCallInputType,
     required: bool,
     has_default: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct WorkflowCallSecret {
+    required: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -87,6 +97,8 @@ struct LocalWorkflowCall {
     job_id: String,
     callee_path: PathBuf,
     provided_inputs: BTreeMap<String, Value>,
+    provided_secrets: BTreeSet<String>,
+    inherits_secrets: bool,
 }
 
 fn string_key(key: &str) -> Value {
@@ -212,9 +224,29 @@ fn parse_workflow_call_contract(file: &WorkflowFile) -> Option<WorkflowCallContr
         })
         .unwrap_or_default();
 
+    let secrets = mapping_get(workflow_call, "secrets")
+        .and_then(value_as_mapping)
+        .map(|secrets| {
+            secrets
+                .iter()
+                .filter_map(|(name, value)| {
+                    let name = value_as_str(name)?;
+                    let spec = value_as_mapping(value)?;
+                    Some((
+                        name.to_owned(),
+                        WorkflowCallSecret {
+                            required: parse_bool(mapping_get(spec, "required")),
+                        },
+                    ))
+                })
+                .collect::<BTreeMap<_, _>>()
+        })
+        .unwrap_or_default();
+
     Some(WorkflowCallContract {
         relative_path: file.relative_path.clone(),
         inputs,
+        secrets,
         outputs,
     })
 }
@@ -231,7 +263,8 @@ fn discover_local_workflow_calls(file: &WorkflowFile) -> Vec<LocalWorkflowCall> 
         return Vec::new();
     };
 
-    jobs.iter()
+    let mut calls = jobs
+        .iter()
         .filter_map(|(job_id, value)| {
             let job_id = value_as_str(job_id)?;
             let job = value_as_mapping(value)?;
@@ -248,14 +281,40 @@ fn discover_local_workflow_calls(file: &WorkflowFile) -> Vec<LocalWorkflowCall> 
                         .collect::<BTreeMap<_, _>>()
                 })
                 .unwrap_or_default();
+            let (provided_secrets, inherits_secrets) = parse_call_secrets(job);
 
             Some(LocalWorkflowCall {
                 job_id: job_id.to_owned(),
                 callee_path,
                 provided_inputs,
+                provided_secrets,
+                inherits_secrets,
             })
         })
-        .collect()
+        .collect::<Vec<_>>();
+    // Keep dry-run reports stable across runs so CI artifacts diff cleanly.
+    calls.sort_by(|left, right| {
+        left.job_id
+            .cmp(&right.job_id)
+            .then_with(|| left.callee_path.cmp(&right.callee_path))
+    });
+    calls
+}
+
+fn parse_call_secrets(job: &Mapping) -> (BTreeSet<String>, bool) {
+    // Reports and diagnostics should only expose secret names or `inherit`, never values.
+    match mapping_get(job, "secrets") {
+        Some(Value::String(mode)) if mode == "inherit" => (BTreeSet::new(), true),
+        Some(Value::Mapping(secrets)) => (
+            secrets
+                .keys()
+                .filter_map(value_as_str)
+                .map(ToOwned::to_owned)
+                .collect(),
+            false,
+        ),
+        _ => (BTreeSet::new(), false),
+    }
 }
 
 fn needs_output_regex() -> Result<Regex, AppError> {
@@ -358,6 +417,142 @@ fn record_issue(
     call_issues.push(message);
 }
 
+fn build_analysis_call(
+    call: &LocalWorkflowCall,
+    referenced_outputs: Vec<String>,
+    issues: Vec<String>,
+) -> WorkflowCallAnalysisCall {
+    WorkflowCallAnalysisCall {
+        job_id: call.job_id.clone(),
+        callee_workflow: call.callee_path.clone(),
+        provided_inputs: call.provided_inputs.clone(),
+        provided_secrets: call.provided_secrets.iter().cloned().collect(),
+        inherits_secrets: call.inherits_secrets,
+        referenced_outputs,
+        issues,
+    }
+}
+
+fn validate_required_inputs(
+    issues: &mut Vec<CallerValidationIssue>,
+    call_issues: &mut Vec<String>,
+    workflow: &WorkflowFile,
+    call: &LocalWorkflowCall,
+    contract: &WorkflowCallContract,
+) {
+    for (input_name, input_spec) in &contract.inputs {
+        if input_spec.required
+            && !input_spec.has_default
+            && !call.provided_inputs.contains_key(input_name)
+        {
+            record_issue(
+                issues,
+                call_issues,
+                workflow,
+                &call.job_id,
+                &call.callee_path,
+                format!("missing required input `{input_name}`"),
+            );
+        }
+    }
+}
+
+fn validate_provided_inputs(
+    issues: &mut Vec<CallerValidationIssue>,
+    call_issues: &mut Vec<String>,
+    workflow: &WorkflowFile,
+    call: &LocalWorkflowCall,
+    contract: &WorkflowCallContract,
+) {
+    for (input_name, value) in &call.provided_inputs {
+        let Some(input_spec) = contract.inputs.get(input_name) else {
+            record_issue(
+                issues,
+                call_issues,
+                workflow,
+                &call.job_id,
+                &call.callee_path,
+                format!("unexpected input `{input_name}`"),
+            );
+            continue;
+        };
+
+        if !type_matches_literal(value, &input_spec.input_type) {
+            record_issue(
+                issues,
+                call_issues,
+                workflow,
+                &call.job_id,
+                &call.callee_path,
+                format!(
+                    "input `{input_name}` expects a {} value",
+                    describe_input_type(&input_spec.input_type)
+                ),
+            );
+        }
+    }
+}
+
+fn validate_provided_secrets(
+    issues: &mut Vec<CallerValidationIssue>,
+    call_issues: &mut Vec<String>,
+    workflow: &WorkflowFile,
+    call: &LocalWorkflowCall,
+    contract: &WorkflowCallContract,
+) {
+    if call.inherits_secrets {
+        return;
+    }
+
+    for (secret_name, secret_spec) in &contract.secrets {
+        if secret_spec.required && !call.provided_secrets.contains(secret_name) {
+            record_issue(
+                issues,
+                call_issues,
+                workflow,
+                &call.job_id,
+                &call.callee_path,
+                format!("missing required secret `{secret_name}`"),
+            );
+        }
+    }
+
+    for secret_name in &call.provided_secrets {
+        if !contract.secrets.contains_key(secret_name) {
+            record_issue(
+                issues,
+                call_issues,
+                workflow,
+                &call.job_id,
+                &call.callee_path,
+                format!("unexpected secret `{secret_name}`"),
+            );
+        }
+    }
+}
+
+fn validate_referenced_outputs(
+    issues: &mut Vec<CallerValidationIssue>,
+    call_issues: &mut Vec<String>,
+    workflow: &WorkflowFile,
+    call: &LocalWorkflowCall,
+    contract: &WorkflowCallContract,
+    referenced_outputs: &[String],
+) {
+    for output_name in referenced_outputs {
+        if !contract.outputs.contains(output_name) {
+            record_issue(
+                issues,
+                call_issues,
+                workflow,
+                &call.job_id,
+                &call.callee_path,
+                format!("references missing reusable workflow output `{output_name}`"),
+            );
+        }
+    }
+}
+
 pub fn write_workflow_call_report(
     report: &WorkflowCallReport,
     path: &Path,
@@ -409,80 +604,23 @@ pub fn validate_workflow_callers(
                     &call.callee_path,
                     "local reusable workflow is missing a workflow_call contract",
                 );
-                calls.push(WorkflowCallAnalysisCall {
-                    job_id: call.job_id.clone(),
-                    callee_workflow: call.callee_path.clone(),
-                    provided_inputs: call.provided_inputs.clone(),
-                    referenced_outputs,
-                    issues: call_issues,
-                });
+                calls.push(build_analysis_call(call, referenced_outputs, call_issues));
                 continue;
             };
 
-            for (input_name, input_spec) in &contract.inputs {
-                if input_spec.required
-                    && !input_spec.has_default
-                    && !call.provided_inputs.contains_key(input_name)
-                {
-                    record_issue(
-                        &mut issues,
-                        &mut call_issues,
-                        workflow,
-                        &call.job_id,
-                        &call.callee_path,
-                        format!("missing required input `{input_name}`"),
-                    );
-                }
-            }
+            validate_required_inputs(&mut issues, &mut call_issues, workflow, call, contract);
+            validate_provided_inputs(&mut issues, &mut call_issues, workflow, call, contract);
+            validate_provided_secrets(&mut issues, &mut call_issues, workflow, call, contract);
+            validate_referenced_outputs(
+                &mut issues,
+                &mut call_issues,
+                workflow,
+                call,
+                contract,
+                &referenced_outputs,
+            );
 
-            for (input_name, value) in &call.provided_inputs {
-                let Some(input_spec) = contract.inputs.get(input_name) else {
-                    record_issue(
-                        &mut issues,
-                        &mut call_issues,
-                        workflow,
-                        &call.job_id,
-                        &call.callee_path,
-                        format!("unexpected input `{input_name}`"),
-                    );
-                    continue;
-                };
-
-                if !type_matches_literal(value, &input_spec.input_type) {
-                    record_issue(
-                        &mut issues,
-                        &mut call_issues,
-                        workflow,
-                        &call.job_id,
-                        &call.callee_path,
-                        format!(
-                            "input `{input_name}` expects a {} value",
-                            describe_input_type(&input_spec.input_type)
-                        ),
-                    );
-                }
-            }
-
-            for output_name in &referenced_outputs {
-                if !contract.outputs.contains(output_name) {
-                    record_issue(
-                        &mut issues,
-                        &mut call_issues,
-                        workflow,
-                        &call.job_id,
-                        &call.callee_path,
-                        format!("references missing reusable workflow output `{output_name}`"),
-                    );
-                }
-            }
-
-            calls.push(WorkflowCallAnalysisCall {
-                job_id: call.job_id.clone(),
-                callee_workflow: call.callee_path.clone(),
-                provided_inputs: call.provided_inputs.clone(),
-                referenced_outputs,
-                issues: call_issues,
-            });
+            calls.push(build_analysis_call(call, referenced_outputs, call_issues));
         }
 
         workflows.push(WorkflowCallAnalysis {
@@ -491,6 +629,7 @@ pub fn validate_workflow_callers(
         });
     }
 
+    workflows.sort_by(|left, right| left.workflow_path.cmp(&right.workflow_path));
     issues.sort();
     issues.dedup();
 
@@ -673,6 +812,128 @@ jobs:
             .issues
             .iter()
             .any(|issue| issue.message.contains("unexpected input `unknown-input`")));
+    }
+
+    #[test]
+    fn validates_required_reusable_workflow_secrets() {
+        let repo = tempdir().expect("temp dir should be created");
+        write_workflow(
+            repo.path(),
+            ".github/workflows/deploy.yml",
+            r#"on:
+  workflow_call:
+    secrets:
+      cloud-token:
+        required: true
+      optional-token:
+        required: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+"#,
+        );
+        write_workflow(
+            repo.path(),
+            ".github/workflows/ci.yml",
+            r#"on:
+  push:
+jobs:
+  deploy:
+    uses: ./.github/workflows/deploy.yml
+    secrets:
+      cloud-token: ${{ secrets.CLOUD_TOKEN }}
+"#,
+        );
+
+        let result = validate(repo.path());
+
+        assert_eq!(result.failed_count, 0);
+        assert!(result.report.issues.is_empty());
+        assert_eq!(
+            result.report.workflows[0].calls[0].provided_secrets,
+            vec!["cloud-token".to_owned()]
+        );
+        assert!(!result.report.workflows[0].calls[0].inherits_secrets);
+    }
+
+    #[test]
+    fn reports_missing_and_unexpected_reusable_workflow_secrets() {
+        let repo = tempdir().expect("temp dir should be created");
+        write_workflow(
+            repo.path(),
+            ".github/workflows/deploy.yml",
+            r#"on:
+  workflow_call:
+    secrets:
+      cloud-token:
+        required: true
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+"#,
+        );
+        write_workflow(
+            repo.path(),
+            ".github/workflows/ci.yml",
+            r#"on:
+  push:
+jobs:
+  deploy:
+    uses: ./.github/workflows/deploy.yml
+    secrets:
+      extra-token: ${{ secrets.EXTRA_TOKEN }}
+"#,
+        );
+
+        let result = validate(repo.path());
+
+        assert_eq!(result.failed_count, 2);
+        assert!(result.report.issues.iter().any(|issue| issue
+            .message
+            .contains("missing required secret `cloud-token`")));
+        assert!(result
+            .report
+            .issues
+            .iter()
+            .any(|issue| issue.message.contains("unexpected secret `extra-token`")));
+    }
+
+    #[test]
+    fn accepts_inherited_reusable_workflow_secrets() {
+        let repo = tempdir().expect("temp dir should be created");
+        write_workflow(
+            repo.path(),
+            ".github/workflows/deploy.yml",
+            r#"on:
+  workflow_call:
+    secrets:
+      cloud-token:
+        required: true
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+"#,
+        );
+        write_workflow(
+            repo.path(),
+            ".github/workflows/ci.yml",
+            r#"on:
+  push:
+jobs:
+  deploy:
+    uses: ./.github/workflows/deploy.yml
+    secrets: inherit
+"#,
+        );
+
+        let result = validate(repo.path());
+
+        assert_eq!(result.failed_count, 0);
+        assert!(result.report.issues.is_empty());
+        assert!(result.report.workflows[0].calls[0]
+            .provided_secrets
+            .is_empty());
+        assert!(result.report.workflows[0].calls[0].inherits_secrets);
     }
 
     #[test]

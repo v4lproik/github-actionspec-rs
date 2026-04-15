@@ -133,7 +133,7 @@ jobs:
           emit-outputs: |
             run_ci=true
             run_pages=false
-          emit-file: ${{ runner.temp }}/github-actionspec-e2e/fragments/detect-changes.json
+          emit-file: /github/runner_temp/github-actionspec-e2e/fragments/detect-changes.json
       - name: Emit lint fragment through the action
         id: smoke-lint
         uses: ./
@@ -141,7 +141,7 @@ jobs:
           mode: emit-fragment
           emit-job: lint
           emit-result: success
-          emit-file: ${{ runner.temp }}/github-actionspec-e2e/fragments/lint.json
+          emit-file: /github/runner_temp/github-actionspec-e2e/fragments/lint.json
       - name: Emit build fragment through the action
         id: smoke-build
         uses: ./
@@ -149,7 +149,7 @@ jobs:
           mode: emit-fragment
           emit-job: build
           emit-result: success
-          emit-file: ${{ runner.temp }}/github-actionspec-e2e/fragments/build.json
+          emit-file: /github/runner_temp/github-actionspec-e2e/fragments/build.json
       - name: Emit tests fragment through the action
         id: smoke-tests
         uses: ./
@@ -157,7 +157,7 @@ jobs:
           mode: emit-fragment
           emit-job: tests
           emit-result: success
-          emit-file: ${{ runner.temp }}/github-actionspec-e2e/fragments/tests.json
+          emit-file: /github/runner_temp/github-actionspec-e2e/fragments/tests.json
       - name: Emit docker fragment through the action
         id: smoke-docker
         uses: ./
@@ -165,7 +165,7 @@ jobs:
           mode: emit-fragment
           emit-job: docker
           emit-result: success
-          emit-file: ${{ runner.temp }}/github-actionspec-e2e/fragments/docker.json
+          emit-file: /github/runner_temp/github-actionspec-e2e/fragments/docker.json
       - name: Emit pages fragment through the action
         id: smoke-pages
         uses: ./
@@ -173,7 +173,7 @@ jobs:
           mode: emit-fragment
           emit-job: pages
           emit-result: skipped
-          emit-file: ${{ runner.temp }}/github-actionspec-e2e/fragments/pages.json
+          emit-file: /github/runner_temp/github-actionspec-e2e/fragments/pages.json
       - name: Capture emitted smoke fragments through the action
         id: smoke-capture
         uses: ./
@@ -188,14 +188,14 @@ jobs:
             ${{ steps.smoke-tests.outputs.fragment-path }}
             ${{ steps.smoke-docker.outputs.fragment-path }}
             ${{ steps.smoke-pages.outputs.fragment-path }}
-          capture-file: ${{ runner.temp }}/github-actionspec-e2e/current/workflow-run.json
+          capture-file: /github/runner_temp/github-actionspec-e2e/current/workflow-run.json
       - name: Validate captured smoke payload through the action
         uses: ./
         with:
           workflow: ci.yml
           actual: ${{ steps.smoke-capture.outputs.capture-path }}
-          report-file: ${{ runner.temp }}/github-actionspec-e2e/current/validation-report.json
-          dashboard-file: ${{ runner.temp }}/github-actionspec-e2e/current/dashboard.md
+          report-file: /github/runner_temp/github-actionspec-e2e/current/validation-report.json
+          dashboard-file: /github/runner_temp/github-actionspec-e2e/current/dashboard.md
           write-summary: false
       - name: Validate passing fixture directory
         uses: ./
@@ -588,3 +588,105 @@ jobs:
 
           Enable Pages and select GitHub Actions as the source to publish the site.
           EOF
+
+  runtime-contract-validation:
+    if: ${{ always() && !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    name: Runtime Contract Validation
+    runs-on: ubuntu-latest
+    needs:
+      - detect-changes
+      - lint
+      - build
+      - tests
+      - remote-action-integration
+      - docker
+      - pages
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Emit detect-changes runtime fragment
+        id: runtime-detect-changes
+        uses: ./
+        with:
+          mode: emit-fragment
+          emit-job: detect-changes
+          emit-result: ${{ needs.detect-changes.result }}
+          emit-outputs: |
+            run_ci=${{ needs.detect-changes.outputs.run_ci }}
+            run_pages=${{ needs.detect-changes.outputs.run_pages }}
+          emit-file: /github/runner_temp/github-actionspec-runtime/fragments/detect-changes.json
+      - name: Emit lint runtime fragment
+        id: runtime-lint
+        uses: ./
+        with:
+          mode: emit-fragment
+          emit-job: lint
+          emit-result: ${{ needs.lint.result }}
+          emit-file: /github/runner_temp/github-actionspec-runtime/fragments/lint.json
+      - name: Emit build runtime fragment
+        id: runtime-build
+        uses: ./
+        with:
+          mode: emit-fragment
+          emit-job: build
+          emit-result: ${{ needs.build.result }}
+          emit-file: /github/runner_temp/github-actionspec-runtime/fragments/build.json
+      - name: Emit tests runtime fragment
+        id: runtime-tests
+        uses: ./
+        with:
+          mode: emit-fragment
+          emit-job: tests
+          emit-result: ${{ needs.tests.result }}
+          emit-file: /github/runner_temp/github-actionspec-runtime/fragments/tests.json
+      - name: Emit docker runtime fragment
+        id: runtime-docker
+        uses: ./
+        with:
+          mode: emit-fragment
+          emit-job: docker
+          emit-result: ${{ needs.docker.result }}
+          emit-file: /github/runner_temp/github-actionspec-runtime/fragments/docker.json
+      - name: Emit pages runtime fragment
+        id: runtime-pages
+        uses: ./
+        with:
+          mode: emit-fragment
+          emit-job: pages
+          emit-result: ${{ needs.pages.result }}
+          emit-file: /github/runner_temp/github-actionspec-runtime/fragments/pages.json
+      - name: Capture runtime workflow payload
+        id: runtime-capture
+        uses: ./
+        with:
+          mode: capture
+          workflow: ci.yml
+          ref-name: ${{ github.ref_name }}
+          capture-job-files: |
+            ${{ steps.runtime-detect-changes.outputs.fragment-path }}
+            ${{ steps.runtime-lint.outputs.fragment-path }}
+            ${{ steps.runtime-build.outputs.fragment-path }}
+            ${{ steps.runtime-tests.outputs.fragment-path }}
+            ${{ steps.runtime-docker.outputs.fragment-path }}
+            ${{ steps.runtime-pages.outputs.fragment-path }}
+          capture-file: /github/runner_temp/github-actionspec-runtime/current/workflow-run.json
+      - name: Validate runtime workflow payload
+        id: runtime-validate
+        uses: ./
+        with:
+          repo: .
+          workflow: ci.yml
+          actual: ${{ steps.runtime-capture.outputs.capture-path }}
+          report-file: /github/runner_temp/github-actionspec-runtime/current/validation-report.json
+          dashboard-file: /github/runner_temp/github-actionspec-runtime/current/dashboard.md
+      - name: Upload runtime contract artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-runtime-contract
+          path: |
+            ${{ steps.runtime-capture.outputs.capture-path }}
+            ${{ steps.runtime-validate.outputs.report-path }}
+            ${{ steps.runtime-validate.outputs.dashboard-path }}

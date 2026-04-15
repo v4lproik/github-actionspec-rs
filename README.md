@@ -51,6 +51,7 @@ just validate-callers-report /path/to/repo target/actionspec/callers-report.json
 just validate-repo /path/to/repo ci.yml /path/to/actual.json
 just validate-repo-report /path/to/repo ci.yml /path/to/payloads target/actionspec/report.json
 just validate-repo-report-dry /path/to/repo ci.yml /path/to/payloads target/actionspec/report.json
+just validate-repo-dashboard /path/to/repo ci.yml /path/to/payloads target/actionspec/report.json target/actionspec/dashboard.md
 just dashboard-report target/actionspec/report.json target/actionspec/dashboard.md
 ```
 
@@ -63,6 +64,21 @@ Commands:
 - `github-actionspec validate --schema <file> --schema <file> --contract <file> --actual <file-or-glob>`
 - `github-actionspec validate-repo --repo <path> [--workflow <name>] --actual <file-dir-or-glob> [--report-file <report.json>] [--dry-run]`
 - `github-actionspec dashboard --current <report.json> [--baseline <report.json>] [--output-key <name>] --output <dashboard.md>`
+
+For the common local review flow, use one command to produce both artifacts:
+
+```bash
+just validate-repo-dashboard . ci.yml .github/actionspec-artifacts \
+  target/actionspec/validation-report.json \
+  target/actionspec/dashboard.md
+```
+
+That command:
+
+- runs `validate-repo`
+- writes the JSON report
+- renders the markdown dashboard from that report
+- returns the original validation status so it still works in CI
 
 ## Emit Fragments
 
@@ -226,13 +242,18 @@ The command reports:
 - missing required reusable-workflow inputs
 - unexpected caller inputs
 - obvious literal type mismatches for `string`, `boolean`, and `number` inputs
+- missing required reusable-workflow secrets
+- unexpected caller secrets when secrets are passed explicitly
 - `needs.<job>.outputs.<name>` references to outputs the called workflow no longer exports
+
+If the caller uses `secrets: inherit`, the report records that inheritance mode instead of enumerating secret values.
 
 The caller report also preserves the static analysis surface for each reusable workflow job:
 
 - caller workflow path
 - called reusable workflow path
 - provided `with:` inputs
+- provided secret names, or whether the call inherits secrets
 - referenced `needs.<job>.outputs.*` values
 - issues attached to that call
 
@@ -343,6 +364,14 @@ just validate-repo-report-dry . ci.yml .github/actionspec-artifacts target/actio
 ```
 
 That still runs the full validation logic and records failures in the report, but exits successfully so you can inspect the produced values locally or upload the artifact from CI.
+
+If you want both the report and dashboard from one dry run:
+
+```bash
+just validate-repo-dashboard . ci.yml .github/actionspec-artifacts \
+  target/actionspec/validation-report.json \
+  target/actionspec/dashboard.md "" "" true
+```
 
 To keep the dashboard compact, you can choose which outputs appear:
 
@@ -464,7 +493,7 @@ Examples:
     emit-outputs: |
       run_ci=true
       run_pages=false
-    emit-file: ${{ runner.temp }}/github-actionspec-e2e/fragments/detect-changes.json
+    emit-file: /github/runner_temp/github-actionspec-e2e/fragments/detect-changes.json
 
 - id: actionspec-lint
   uses: v4lproik/github-actionspec-rs@main
@@ -472,7 +501,7 @@ Examples:
     mode: emit-fragment
     emit-job: lint
     emit-result: success
-    emit-file: ${{ runner.temp }}/github-actionspec-e2e/fragments/lint.json
+    emit-file: /github/runner_temp/github-actionspec-e2e/fragments/lint.json
 
 - id: actionspec-build
   uses: v4lproik/github-actionspec-rs@main
@@ -480,7 +509,7 @@ Examples:
     mode: emit-fragment
     emit-job: build
     emit-result: success
-    emit-file: ${{ runner.temp }}/github-actionspec-e2e/fragments/build.json
+    emit-file: /github/runner_temp/github-actionspec-e2e/fragments/build.json
 
 - id: actionspec-tests
   uses: v4lproik/github-actionspec-rs@main
@@ -488,7 +517,7 @@ Examples:
     mode: emit-fragment
     emit-job: tests
     emit-result: success
-    emit-file: ${{ runner.temp }}/github-actionspec-e2e/fragments/tests.json
+    emit-file: /github/runner_temp/github-actionspec-e2e/fragments/tests.json
 
 - id: actionspec-docker
   uses: v4lproik/github-actionspec-rs@main
@@ -496,7 +525,7 @@ Examples:
     mode: emit-fragment
     emit-job: docker
     emit-result: success
-    emit-file: ${{ runner.temp }}/github-actionspec-e2e/fragments/docker.json
+    emit-file: /github/runner_temp/github-actionspec-e2e/fragments/docker.json
 
 - id: actionspec-pages
   uses: v4lproik/github-actionspec-rs@main
@@ -504,7 +533,7 @@ Examples:
     mode: emit-fragment
     emit-job: pages
     emit-result: skipped
-    emit-file: ${{ runner.temp }}/github-actionspec-e2e/fragments/pages.json
+    emit-file: /github/runner_temp/github-actionspec-e2e/fragments/pages.json
 
 - name: Capture the emitted fragments into one normalized payload
   id: actionspec-capture
@@ -520,15 +549,15 @@ Examples:
       ${{ steps.actionspec-tests.outputs.fragment-path }}
       ${{ steps.actionspec-docker.outputs.fragment-path }}
       ${{ steps.actionspec-pages.outputs.fragment-path }}
-    capture-file: ${{ runner.temp }}/github-actionspec-e2e/current/workflow-run.json
+    capture-file: /github/runner_temp/github-actionspec-e2e/current/workflow-run.json
 
 - name: Validate the captured payload
   uses: v4lproik/github-actionspec-rs@main
   with:
     workflow: ci.yml
     actual: ${{ steps.actionspec-capture.outputs.capture-path }}
-    report-file: ${{ runner.temp }}/github-actionspec-e2e/current/validation-report.json
-    dashboard-file: ${{ runner.temp }}/github-actionspec-e2e/current/dashboard.md
+    report-file: /github/runner_temp/github-actionspec-e2e/current/validation-report.json
+    dashboard-file: /github/runner_temp/github-actionspec-e2e/current/dashboard.md
     write-summary: false
 ```
 
@@ -653,6 +682,7 @@ This emits `target/llvm-cov/lcov.info`, which the repository workflow uploads to
 GitHub Actions must call `just`, not raw `cargo`, `gh`, or `mise` command sequences.
 
 - The workflow starts with a `detect-changes` job powered by `dorny/paths-filter` and filter rules stored in `.github/filters/changes.yml`.
+- Reusable workflow interfaces are linted through `validate-callers` as part of `just lint`.
 - Build, lint, test, remote action integration, runtime verification, docker publish, and Pages run in that order when the relevant change filters match.
 - The workflow can also be started manually through `workflow_dispatch`; manual runs force the full CI path even if no matching file changes are present.
 - Build: `just build`
@@ -663,6 +693,10 @@ GitHub Actions must call `just`, not raw `cargo`, `gh`, or `mise` command sequen
 - Coverage upload: `just coverage-ci`
 - Local full pass: `just ci`
 - The remote action integration check now lives inside the main `CI` workflow and validates the published `v4lproik/github-actionspec-rs@main` action reference end to end against this repository's own `ci.yml` fixtures on pushes to `main`.
+- On pushes to `main`, the workflow also captures the real job results from that CI run, validates the captured payload against `.github/actionspec/ci/main.cue`, and uploads a `ci-runtime-contract` artifact containing:
+  - the normalized captured payload
+  - the JSON validation report
+  - the rendered dashboard
 - The `tests` job publishes a `ci-matrix-dashboard` artifact with the current validation report and a markdown matrix. On pull requests, the workflow also updates a single PR comment with that matrix and diffs it against the latest available baseline artifact.
 
 ## Docker Parity
