@@ -72,38 +72,34 @@
         <section class="content-section">
           <div class="section-heading">
             <p class="eyebrow">Step 1</p>
-            <h2>Add a declaration.</h2>
+            <h2>Bootstrap the first contract.</h2>
             <p>
-              Store contracts under <code>.github/actionspec</code>. The declaration is keyed by
-              workflow name and constrains the normalized <code>run</code> payload.
+              Start from the workflow file, not from a blank page. Generate the starter contract
+              and baseline payload first, then tighten the generated files.
             </p>
           </div>
 
-          <article class="code-card">
-            <p class="code-title">Example declaration</p>
-            <pre><code>package actionspec
+          <div class="doc-grid">
+            <article class="code-card">
+              <p class="code-title">Bootstrap from the workflow file</p>
+              <pre><code>just bootstrap-actionspec . ci.yml
 
-workflow: "ci.yml"
+# path inputs are also accepted
+github-actionspec bootstrap \
+  --repo . \
+  --workflow .github/workflows/ci.yml</code></pre>
+            </article>
 
-run: #Declaration.run & {
-  workflow: workflow
-  ref:      "main"
-  jobs: {
-    detect-changes: {
-      result: "success"
-      outputs: {
-        run_ci:    "true" | "false"
-        run_pages: "true" | "false"
-      }
-    }
-
-    if run.jobs["detect-changes"].outputs.run_ci == "true" {
-      build: { result: "success" }
-      tests: { result: "success" }
-    }
-  }
-}</code></pre>
-          </article>
+            <article class="code-card code-card-dark">
+              <p class="code-title">What it writes</p>
+              <ul class="doc-list doc-list-inverse">
+                <li><code>.github/actionspec/ci/main.cue</code></li>
+                <li><code>tests/fixtures/ci/baseline.json</code></li>
+                <li><code>.github/actionspec/ci/bootstrap-ci-snippet.yml</code></li>
+                <li>A starter baseline that matches the current workflow shape.</li>
+              </ul>
+            </article>
+          </div>
         </section>
 
         <section class="content-section">
@@ -154,22 +150,33 @@ just validate-callers-report . \
 
           <div class="doc-grid">
             <article class="code-card">
-              <p class="code-title">Validate existing payloads</p>
+              <p class="code-title">Start from the generated snippet</p>
               <pre><code>- uses: actions/checkout@v6
 
-- uses: v4lproik/github-actionspec-rs@main
+- name: Validate ci.yml contract
+  id: actionspec
+  uses: v4lproik/github-actionspec-rs@main
   with:
-    repo: .
     workflow: ci.yml
-    actual: .github/actionspec-artifacts/**/*.json
-    report-file: /github/runner_temp/actionspec/report.json
-    dashboard-file: /github/runner_temp/actionspec/dashboard.md</code></pre>
+    actual: tests/fixtures/ci/baseline.json
+    report-file: /github/runner_temp/actionspec/current/validation-report.json
+    dashboard-file: /github/runner_temp/actionspec/current/dashboard.md
+
+- name: Upload validation artifacts
+  if: ${{ always() }}
+  uses: actions/upload-artifact@v4
+  with:
+    name: actionspec-ci-baseline
+    path: |
+      ${{ steps.actionspec.outputs.report-path }}
+      ${{ steps.actionspec.outputs.dashboard-path }}</code></pre>
             </article>
 
             <article class="code-card code-card-dark">
-              <p class="code-title">When to move past this</p>
+              <p class="code-title">Then expand from there</p>
               <ul class="doc-list doc-list-inverse">
-                <li>Use fixture payloads first.</li>
+                <li>Start with the generated baseline payload.</li>
+                <li>Switch to captured payloads when the workflow already emits useful fragments.</li>
                 <li>Add matrix dashboards when reviewers need diffs.</li>
                 <li>Add runtime-backed capture once the workflow is stable enough to enforce on protected branches.</li>
               </ul>

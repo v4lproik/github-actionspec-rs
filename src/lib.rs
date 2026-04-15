@@ -1,3 +1,4 @@
+pub mod bootstrap;
 pub mod capture;
 pub mod cli;
 pub mod contracts;

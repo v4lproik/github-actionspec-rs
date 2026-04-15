@@ -1,4 +1,5 @@
 use clap::Parser;
+use github_actionspec_rs::bootstrap::{bootstrap_repo_workflow, BootstrapOptions};
 use github_actionspec_rs::capture::{
     capture_workflow_run, emit_job_fragment, write_captured_workflow_run,
     write_emitted_job_fragment, CaptureWorkflowOptions, EmitFragmentOptions,
@@ -137,6 +138,44 @@ fn run() -> Result<(), github_actionspec_rs::errors::AppError> {
             let declarations = discover_declarations(&repo, &declarations_dir)?;
             println!("{}", serde_json::to_string_pretty(&declarations)?);
         }
+        Command::Bootstrap {
+            repo,
+            workflow,
+            actual,
+            declarations_dir,
+            workflows_dir,
+            fixtures_dir,
+            force,
+        } => {
+            let result = bootstrap_repo_workflow(BootstrapOptions {
+                repo_root: repo,
+                workflow,
+                actual,
+                declarations_dir,
+                workflows_dir,
+                fixtures_dir,
+                force,
+            })?;
+            println!("Created starter workflow contract artifacts:");
+            println!("- workflow: {}", result.workflow);
+            println!("- workflow file: {}", result.workflow_path.display());
+            println!("- declaration: {}", result.declaration_path.display());
+            println!("- baseline: {}", result.actual_path.display());
+            println!("- ci snippet: {}", result.snippet_path.display());
+            println!(
+                "- seeded from actual: {}",
+                if result.seeded_from_actual {
+                    "yes"
+                } else {
+                    "no"
+                }
+            );
+            println!(
+                "Next: just validate-repo-dashboard . {} {} target/actionspec/validation-report.json target/actionspec/dashboard.md",
+                result.workflow,
+                result.actual_path.display(),
+            );
+        }
         Command::ValidateCallers {
             repo,
             workflows_dir,
@@ -209,6 +248,7 @@ fn run() -> Result<(), github_actionspec_rs::errors::AppError> {
 #[cfg(test)]
 mod tests {
     use super::normalize_path_inputs;
+    use github_actionspec_rs::bootstrap::{default_fixtures_dir, default_workflows_dir};
     use std::path::PathBuf;
 
     #[test]
@@ -224,5 +264,11 @@ mod tests {
                 PathBuf::from("fixtures/two.json"),
             ]
         );
+    }
+
+    #[test]
+    fn bootstrap_defaults_match_repo_layout() {
+        assert_eq!(default_workflows_dir(), PathBuf::from(".github/workflows"));
+        assert_eq!(default_fixtures_dir(), PathBuf::from("tests/fixtures"));
     }
 }

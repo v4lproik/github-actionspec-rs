@@ -54,6 +54,22 @@ pub enum Command {
         #[arg(long = "declarations-dir", default_value = ".github/actionspec")]
         declarations_dir: PathBuf,
     },
+    Bootstrap {
+        #[arg(long)]
+        repo: PathBuf,
+        #[arg(long)]
+        workflow: String,
+        #[arg(long)]
+        actual: Option<PathBuf>,
+        #[arg(long = "declarations-dir", default_value = ".github/actionspec")]
+        declarations_dir: PathBuf,
+        #[arg(long = "workflows-dir", default_value = ".github/workflows")]
+        workflows_dir: PathBuf,
+        #[arg(long = "fixtures-dir", default_value = "tests/fixtures")]
+        fixtures_dir: PathBuf,
+        #[arg(long, default_value_t = false)]
+        force: bool,
+    },
     ValidateCallers {
         #[arg(long)]
         repo: PathBuf,
@@ -256,6 +272,40 @@ mod tests {
             } => {
                 assert_eq!(repo, PathBuf::from("/tmp/repo"));
                 assert_eq!(declarations_dir, PathBuf::from(".github/actionspec"));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn bootstrap_defaults_to_repo_conventions() {
+        let cli = Cli::try_parse_from([
+            "github-actionspec",
+            "bootstrap",
+            "--repo",
+            "/tmp/repo",
+            "--workflow",
+            "ci.yml",
+        ])
+        .expect("cli should parse");
+
+        match cli.command {
+            Command::Bootstrap {
+                repo,
+                workflow,
+                actual,
+                declarations_dir,
+                workflows_dir,
+                fixtures_dir,
+                force,
+            } => {
+                assert_eq!(repo, PathBuf::from("/tmp/repo"));
+                assert_eq!(workflow, "ci.yml");
+                assert_eq!(actual, None);
+                assert_eq!(declarations_dir, PathBuf::from(".github/actionspec"));
+                assert_eq!(workflows_dir, PathBuf::from(".github/workflows"));
+                assert_eq!(fixtures_dir, PathBuf::from("tests/fixtures"));
+                assert!(!force);
             }
             other => panic!("unexpected command: {other:?}"),
         }

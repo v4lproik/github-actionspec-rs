@@ -42,6 +42,8 @@ just lint
 just ci
 just test
 just discover
+just bootstrap-actionspec . ci.yml
+just bench-bootstrap
 just emit-fragment build success .github/actionspec-fragments/build.json
 just capture ci.yml .github/actionspec-artifacts/ci-main.json .github/actionspec-fragments
 just coverage-summary
@@ -60,10 +62,56 @@ Commands:
 - `github-actionspec emit-fragment --job <name> --result <status> --file <fragment.json>`
 - `github-actionspec capture --workflow <name> --job-file <file-dir-or-glob> --output <actual.json>`
 - `github-actionspec discover --repo <path>`
+- `github-actionspec bootstrap --repo <path> --workflow <name> [--actual <payload.json>] [--force]`
 - `github-actionspec validate-callers --repo <path> [--report-file <report.json>] [--dry-run]`
 - `github-actionspec validate --schema <file> --schema <file> --contract <file> --actual <file-or-glob>`
 - `github-actionspec validate-repo --repo <path> [--workflow <name>] --actual <file-dir-or-glob> [--report-file <report.json>] [--dry-run]`
 - `github-actionspec dashboard --current <report.json> [--baseline <report.json>] [--output-key <name>] --output <dashboard.md>`
+
+To scaffold the first contract test from an existing workflow:
+
+```bash
+just bootstrap-actionspec . ci.yml
+```
+
+You can also pass a workflow path such as `.github/workflows/ci.yml`. Bootstrap normalizes that to
+the workflow file name (`ci.yml`) before it writes the declaration, payload, and CI snippet.
+
+That creates:
+
+- `.github/actionspec/ci/main.cue`
+- `tests/fixtures/ci/baseline.json`
+- `.github/actionspec/ci/bootstrap-ci-snippet.yml`
+
+If you already captured a real workflow payload, seed the starter files from that payload instead of from a synthetic all-success baseline:
+
+```bash
+github-actionspec bootstrap \
+  --repo . \
+  --workflow ci.yml \
+  --actual .github/actionspec-artifacts/ci-main.json
+```
+
+The generated CI snippet validates the baseline payload through the GitHub Action and uploads the
+report and dashboard artifacts so a repository can get its first contract check into CI without
+writing the integration from scratch.
+
+For larger workflows, bootstrap keeps the starting point intentionally simple:
+
+- every discovered job is captured in the baseline payload
+- synthetic baselines default jobs to `success`
+- captured payloads preserve observed refs, inputs, outputs, matrix values, and steps
+- the generated snippet points at the baseline payload with a repo-relative path so it can be
+  pasted into CI directly
+
+To measure bootstrap performance against a large synthetic workflow, run:
+
+```bash
+just bench-bootstrap
+```
+
+That executes the ignored bootstrap benchmark in release mode and prints the total and
+per-iteration time for a large generated workflow graph.
 
 For the common local review flow, use one command to produce both artifacts:
 

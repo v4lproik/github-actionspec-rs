@@ -28,6 +28,21 @@ pub enum AppError {
     #[error("Missing readable file: {0}")]
     MissingReadableFile(PathBuf),
 
+    #[error("Bootstrap would overwrite an existing file: {0}. Pass --force to replace it.")]
+    BootstrapOutputExists(PathBuf),
+
+    #[error("Workflow `{workflow}` in {path} does not define any jobs.")]
+    BootstrapWorkflowHasNoJobs { workflow: String, path: PathBuf },
+
+    #[error(
+        "Bootstrap actual payload {path} belongs to workflow `{found}`, expected `{expected}`."
+    )]
+    BootstrapActualWorkflowMismatch {
+        path: PathBuf,
+        expected: String,
+        found: String,
+    },
+
     #[error("No readable JSON files were found under directory: {0}")]
     NoActualFilesFound(PathBuf),
 

@@ -63,6 +63,10 @@ test:
   just docker-build
   {{docker-runner}} cargo test --locked
 
+bench-bootstrap:
+  just docker-build
+  {{docker-runner}} cargo test --release --locked --test bootstrap_benchmark -- --ignored --nocapture
+
 coverage:
   just docker-build
   {{docker-runner}} cargo llvm-cov --all-features --workspace --html
@@ -93,6 +97,9 @@ pr-create-draft base="main":
 
 discover repo=".":
   {{host-runner}} cargo run -- discover --repo {{repo}}
+
+bootstrap-actionspec repo workflow actual="" force="false":
+  actual_arg=""; if [ -n "{{actual}}" ]; then actual_arg=" --actual {{actual}}"; fi; force_arg=""; if [ "{{force}}" = "true" ]; then force_arg=" --force"; fi; eval "{{host-runner}} cargo run -- bootstrap --repo {{repo}} --workflow {{workflow}}$actual_arg$force_arg"
 
 emit-fragment job result file:
   {{host-runner}} cargo run -- emit-fragment --job {{job}} --result {{result}} --file {{file}}
