@@ -49,14 +49,21 @@ fn summarize_validation_failures(report: &github_actionspec_rs::types::Validatio
         .iter()
         .filter(|actual| actual.status == ValidationStatus::Failed)
         .map(|actual| {
-            format!(
-                "- {}: {}",
-                actual.actual_path.display(),
+            let details = if actual.issues.is_empty() {
                 actual
                     .error
                     .as_deref()
                     .unwrap_or("validation failed without a reported cue error")
-            )
+                    .to_owned()
+            } else {
+                actual
+                    .issues
+                    .iter()
+                    .map(github_actionspec_rs::types::ValidationIssue::detail_label)
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            };
+            format!("- {}: {}", actual.actual_path.display(), details)
         })
         .collect::<Vec<_>>()
         .join("\n")

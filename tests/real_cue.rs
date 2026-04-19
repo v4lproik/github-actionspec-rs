@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use github_actionspec_rs::types::ValidationStatus;
+use github_actionspec_rs::types::{ValidationIssueKind, ValidationStatus};
 use github_actionspec_rs::validate::{
     validate_repo_workflow, ValidateRepoWorkflowOptions, ValidateRepoWorkflowResult,
 };
@@ -162,4 +162,66 @@ run: #Declaration.run & {
     assert!(error.contains("published_tag"));
     assert!(error.contains("ghcr.io/acme/app:sha-123"));
     assert!(error.contains("ghcr.io/acme/app:sha-456"));
+    assert_eq!(result.report.actuals[0].issues.len(), 1);
+    assert_eq!(
+        result.report.actuals[0].issues[0].kind,
+        ValidationIssueKind::ValueConflict
+    );
+    assert_eq!(
+        result.report.actuals[0].issues[0].path.as_deref(),
+        Some("run.jobs.publish.outputs.published_tag")
+    );
+}
+
+#[test]
+fn real_cue_reports_missing_required_runtime_fields() {
+    let repo = tempdir().expect("temp dir should be created");
+    let declaration = repo.path().join(".github/actionspec/build/main.cue");
+    let actual = repo.path().join("actual.json");
+
+    write_file(
+        &declaration,
+        r#"package actionspec
+
+workflow: "build.yml"
+
+run: #Declaration.run & {
+  jobs: {
+    build: {
+      result: "success"
+      outputs: {
+        artifact_name: string
+      }
+    }
+  }
+}
+"#,
+    );
+    write_file(
+        &actual,
+        r#"{
+  "run": {
+    "workflow": "build.yml",
+    "jobs": {
+      "build": {
+        "result": "success"
+      }
+    }
+  }
+}
+"#,
+    );
+
+    let result =
+        validate_repo(repo.path(), vec![actual.clone()]).expect("report should be produced");
+
+    assert_eq!(result.failed_count, 1);
+    assert_eq!(result.report.actuals[0].status, ValidationStatus::Failed);
+    assert!(result.report.actuals[0]
+        .issues
+        .iter()
+        .any(
+            |issue| issue.kind == ValidationIssueKind::ConstraintViolation
+                && issue.path.as_deref() == Some("run.jobs.build.outputs.artifact_name")
+        ));
 }

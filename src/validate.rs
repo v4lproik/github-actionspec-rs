@@ -8,8 +8,8 @@ use crate::discovery::find_declaration;
 use crate::errors::AppError;
 use crate::fs_utils::{resolve_json_input_paths, write_pretty_json_file};
 use crate::types::{
-    ActualValidationReport, ValidationReport, ValidationStatus, WorkflowJobRecord,
-    WorkflowRunEnvelope,
+    ActualValidationReport, ValidationIssue, ValidationIssueKind, ValidationReport,
+    ValidationStatus, WorkflowJobRecord, WorkflowRunEnvelope,
 };
 
 #[derive(Debug, Clone)]
@@ -48,6 +48,12 @@ struct WorkflowRunSummary {
     jobs: std::collections::BTreeMap<String, String>,
     matrix: Option<std::collections::BTreeMap<String, serde_json::Value>>,
     outputs: Option<std::collections::BTreeMap<String, std::collections::BTreeMap<String, String>>>,
+}
+
+#[derive(Debug, Clone)]
+struct CueVetFailure {
+    message: String,
+    issues: Vec<ValidationIssue>,
 }
 
 fn assert_readable(path: &Path) -> Result<(), AppError> {
@@ -175,7 +181,7 @@ fn run_cue_vet(
     actual_path: &Path,
     cwd: Option<&Path>,
     env: &Option<HashMap<String, String>>,
-) -> Result<(), String> {
+) -> Result<(), CueVetFailure> {
     let mut command = cue_command(env, cwd, "vet");
     for schema_path in schema_paths {
         command.arg(schema_path);
@@ -192,9 +198,21 @@ fn run_cue_vet(
                 .code()
                 .map(|value| value.to_string())
                 .unwrap_or_else(|| "unknown".to_owned());
-            Err(format_cue_vet_failure(actual_path, &code, &stderr))
+            Err(CueVetFailure {
+                message: format_cue_vet_failure(actual_path, &code, &stderr),
+                issues: classify_cue_vet_issues(&stderr),
+            })
         }
-        Err(error) => Err(error.to_string()),
+        Err(error) => Err(CueVetFailure {
+            message: error.to_string(),
+            issues: vec![ValidationIssue {
+                kind: ValidationIssueKind::CueError,
+                path: None,
+                message: error.to_string(),
+                expected: None,
+                actual: None,
+            }],
+        }),
     }
 }
 
@@ -218,10 +236,7 @@ fn format_cue_vet_failure(actual_path: &Path, code: &str, stderr: &str) -> Strin
 }
 
 fn extract_conflicting_values(stderr: &str) -> Option<(String, String, String)> {
-    let first_line = stderr
-        .lines()
-        .map(str::trim)
-        .find(|line| !line.is_empty())?;
+    let first_line = first_non_empty_line(stderr)?;
     let (field, values) = first_line.split_once(": conflicting values ")?;
     let values = values.trim_end_matches(':');
     let (left, right) = values.rsplit_once(" and ")?;
@@ -231,6 +246,98 @@ fn extract_conflicting_values(stderr: &str) -> Option<(String, String, String)> 
         left.trim().to_owned(),
         right.trim().to_owned(),
     ))
+}
+
+fn first_non_empty_line(input: &str) -> Option<&str> {
+    input.lines().map(str::trim).find(|line| !line.is_empty())
+}
+
+fn parse_issue_line(line: &str) -> Option<ValidationIssue> {
+    // CUE reports most contract failures as one structured line per issue, so parse only the
+    // stable prefixes we know how to turn into typed diagnostics and keep the raw fallback for
+    // everything else.
+    if let Some((path, values)) = line.split_once(": conflicting values ") {
+        let values = values.trim_end_matches(':');
+        let (expected, actual) = values.rsplit_once(" and ")?;
+        return Some(ValidationIssue {
+            kind: ValidationIssueKind::ValueConflict,
+            path: Some(path.trim().to_owned()),
+            message: format!(
+                "conflicting values {} and {}",
+                expected.trim(),
+                actual.trim()
+            ),
+            expected: Some(expected.trim().to_owned()),
+            actual: Some(actual.trim().to_owned()),
+        });
+    }
+
+    if let Some((path, _)) = line.split_once(": field not allowed") {
+        return Some(ValidationIssue {
+            kind: ValidationIssueKind::UnexpectedField,
+            path: Some(path.trim().to_owned()),
+            message: "field not allowed".to_owned(),
+            expected: None,
+            actual: None,
+        });
+    }
+
+    if let Some((path, _)) = line.split_once(": field is required but not present") {
+        return Some(ValidationIssue {
+            kind: ValidationIssueKind::MissingField,
+            path: Some(path.trim().to_owned()),
+            message: "field is required but not present".to_owned(),
+            expected: None,
+            actual: None,
+        });
+    }
+
+    if let Some((path, message)) = line.split_once(": incomplete value ") {
+        return Some(ValidationIssue {
+            kind: ValidationIssueKind::ConstraintViolation,
+            path: Some(path.trim().to_owned()),
+            message: format!("incomplete value {}", message.trim()),
+            expected: None,
+            actual: Some(message.trim().to_owned()),
+        });
+    }
+
+    if let Some((path, message)) = line.split_once(": invalid value ") {
+        return Some(ValidationIssue {
+            kind: ValidationIssueKind::ConstraintViolation,
+            path: Some(path.trim().to_owned()),
+            message: format!("invalid value {}", message.trim()),
+            expected: None,
+            actual: Some(message.trim().to_owned()),
+        });
+    }
+
+    None
+}
+
+fn classify_cue_vet_issues(stderr: &str) -> Vec<ValidationIssue> {
+    let mut issues = stderr
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .filter_map(parse_issue_line)
+        .collect::<Vec<_>>();
+
+    issues.sort();
+    issues.dedup();
+
+    if issues.is_empty() && !stderr.trim().is_empty() {
+        let first_line = first_non_empty_line(stderr).unwrap_or("cue vet failed");
+        issues.push(ValidationIssue {
+            kind: ValidationIssueKind::CueError,
+            path: None,
+            message: first_line.to_owned(),
+            expected: None,
+            actual: None,
+        });
+    }
+
+    issues
 }
 
 pub fn validate_contract(options: ValidateContractOptions) -> Result<(), AppError> {
@@ -253,7 +360,7 @@ pub fn validate_contract(options: ValidateContractOptions) -> Result<(), AppErro
             options.cwd.as_deref(),
             &options.env,
         ) {
-            return Err(AppError::CueVetFailed(error));
+            return Err(AppError::CueVetFailed(error.message));
         }
     }
 
@@ -309,11 +416,11 @@ pub fn validate_repo_workflow(
             cwd.as_deref(),
             &env,
         );
-        let (status, error) = match cue_result {
-            Ok(()) => (ValidationStatus::Passed, None),
+        let (status, issues, error) = match cue_result {
+            Ok(()) => (ValidationStatus::Passed, Vec::new(), None),
             Err(error) => {
                 failed += 1;
-                (ValidationStatus::Failed, Some(error))
+                (ValidationStatus::Failed, error.issues, Some(error.message))
             }
         };
 
@@ -325,6 +432,7 @@ pub fn validate_repo_workflow(
             jobs: summary.jobs,
             matrix: summary.matrix,
             outputs: summary.outputs,
+            issues,
             error,
         });
     }
@@ -350,6 +458,16 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
+
+    fn conflict_issue(path: &str, expected: &str, actual: &str) -> ValidationIssue {
+        ValidationIssue {
+            kind: ValidationIssueKind::ValueConflict,
+            path: Some(path.to_owned()),
+            message: format!("conflicting values {expected} and {actual}"),
+            expected: Some(expected.to_owned()),
+            actual: Some(actual.to_owned()),
+        }
+    }
 
     #[test]
     fn summarize_workflow_jobs_collects_report_fields_in_one_pass() {
@@ -431,6 +549,74 @@ mod tests {
         );
         assert_eq!(summary.matrix, None);
         assert_eq!(summary.outputs, None);
+    }
+
+    #[test]
+    fn classify_cue_vet_issues_extracts_structured_conflicts_and_fields() {
+        let issues = classify_cue_vet_issues(
+            "run.jobs.publish.outputs.published_tag: conflicting values ghcr.io/acme/app:sha-123 and ghcr.io/acme/app:sha-456:\nrun.jobs.build.outputs.debug_token: field not allowed\n",
+        );
+
+        assert_eq!(
+            issues,
+            vec![
+                conflict_issue(
+                    "run.jobs.publish.outputs.published_tag",
+                    "ghcr.io/acme/app:sha-123",
+                    "ghcr.io/acme/app:sha-456",
+                ),
+                ValidationIssue {
+                    kind: ValidationIssueKind::UnexpectedField,
+                    path: Some("run.jobs.build.outputs.debug_token".to_owned()),
+                    message: "field not allowed".to_owned(),
+                    expected: None,
+                    actual: None,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn classify_cue_vet_issues_falls_back_to_generic_cue_error() {
+        let issues = classify_cue_vet_issues("some internal cue error");
+
+        assert_eq!(
+            issues,
+            vec![ValidationIssue {
+                kind: ValidationIssueKind::CueError,
+                path: None,
+                message: "some internal cue error".to_owned(),
+                expected: None,
+                actual: None,
+            }]
+        );
+    }
+
+    #[test]
+    fn classify_cue_vet_issues_extracts_missing_and_invalid_values() {
+        let issues = classify_cue_vet_issues(
+            "run.jobs.build.outputs.artifact_name: field is required but not present\nrun.jobs.build.result: invalid value skipped (out of bound)\n",
+        );
+
+        assert_eq!(
+            issues,
+            vec![
+                ValidationIssue {
+                    kind: ValidationIssueKind::MissingField,
+                    path: Some("run.jobs.build.outputs.artifact_name".to_owned()),
+                    message: "field is required but not present".to_owned(),
+                    expected: None,
+                    actual: None,
+                },
+                ValidationIssue {
+                    kind: ValidationIssueKind::ConstraintViolation,
+                    path: Some("run.jobs.build.result".to_owned()),
+                    message: "invalid value skipped (out of bound)".to_owned(),
+                    expected: None,
+                    actual: Some("skipped (out of bound)".to_owned()),
+                },
+            ]
+        );
     }
 
     fn install_fake_cue(temp_root: &Path, script: &str) -> HashMap<String, String> {

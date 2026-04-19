@@ -4,781 +4,118 @@
 [![Codecov](https://codecov.io/gh/v4lproik/github-actionspec-rs/branch/main/graph/badge.svg)](https://codecov.io/gh/v4lproik/github-actionspec-rs)
 [![Docker Hub](https://img.shields.io/docker/pulls/v4lproik/github-actionspec-rs)](https://hub.docker.com/r/v4lproik/github-actionspec-rs)
 
-Rust implementation of the GitHub Actions workflow contract validator.
+Validate GitHub Actions workflow behavior against CUE contracts.
 
-It keeps CUE as the intermediate language and uses the `cue` CLI for validation.
-
-Because the contract layer is expressed in CUE rather than ad hoc shell logic, the validation rules are usually easier for both humans and AI-assisted tooling to inspect, explain, and extend. This should be read as a practical ergonomics benefit, not as a benchmark claim that CUE is universally "better for AI".
+`github-actionspec-rs` keeps expected workflow behavior in CUE, captures actual workflow payloads as JSON, and validates both to produce a report and a dashboard that engineers can review.
 
 Project site: https://v4lproik.github.io/github-actionspec-rs/
 
-## Tooling
+## Why
 
-This repo uses Docker for build, lint, test, and coverage so local development and CI run the same toolchain. `just` remains the repository entrypoint. `mise` is only kept for host-side commands such as `discover` and `validate`.
+- Catch workflow drift before it breaks automation.
+- Review matrix, output, and cross-job behavior as artifacts instead of logs.
+- Lint reusable workflow interfaces with `validate-callers`.
+- Keep the contract layer explicit and easy to inspect.
 
-```bash
-just docker-build
-just lint
-just test
-just ci
-just discover
-just emit-fragment build success .github/actionspec-fragments/build.json
-just capture ci.yml .github/actionspec-artifacts/ci-main.json .github/actionspec-fragments
-just coverage
-just coverage-summary
+Because the contract layer is expressed in CUE rather than ad hoc shell logic, the rules are usually easier for both humans and AI-assisted tooling to inspect, explain, and extend. This is a practical ergonomics point, not a benchmark claim.
+
+## The Model
+
+The product has one chain:
+
+1. Declare expected behavior in `.cue`.
+2. Capture actual workflow behavior as a normalized JSON payload.
+3. Validate expected vs actual and render artifacts.
+
+Minimal mental model:
+
+```text
+.github/workflows/ci.yml
+  -> .github/actionspec/ci/main.cue
+  -> tests/fixtures/ci/baseline.json
+  -> target/actionspec/validation-report.json
+  -> target/actionspec/dashboard.md
 ```
 
-The Docker image definition lives in [Dockerfile](/Users/v4lproik/Programmation/v4lproik/github-actionspec-rs/Dockerfile), and the repository build target is declared in [docker-bake.hcl](/Users/v4lproik/Programmation/v4lproik/github-actionspec-rs/docker-bake.hcl). The repo-local host configuration lives in [.mise.toml](/Users/v4lproik/Programmation/v4lproik/github-actionspec-rs/.mise.toml) and is only needed for host-executed commands.
-The dev and runtime images both install the `cue` version pinned in `.mise.toml`, so `just test` covers real CUE evaluation in addition to the shim-based validation tests.
+## Quickstart
 
-This repo also exposes the common commands through [justfile](/Users/v4lproik/Programmation/v4lproik/github-actionspec-rs/justfile):
+Start with one workflow and one payload.
 
-```bash
-just install
-just docker-build
-just docker-build-runtime
-just fmt
-just lint
-just ci
-just test
-just discover
-just bootstrap-actionspec . ci.yml
-just bench-bootstrap
-just emit-fragment build success .github/actionspec-fragments/build.json
-just capture ci.yml .github/actionspec-artifacts/ci-main.json .github/actionspec-fragments
-just coverage-summary
-just pr-create
-just validate-callers /path/to/repo
-just validate-callers-report /path/to/repo target/actionspec/callers-report.json
-just validate-repo /path/to/repo ci.yml /path/to/actual.json
-just validate-repo-report /path/to/repo ci.yml /path/to/payloads target/actionspec/report.json
-just validate-repo-report-dry /path/to/repo ci.yml /path/to/payloads target/actionspec/report.json
-just validate-repo-dashboard /path/to/repo ci.yml /path/to/payloads target/actionspec/report.json target/actionspec/dashboard.md
-just dashboard-report target/actionspec/report.json target/actionspec/dashboard.md
-```
-
-Commands:
-
-- `github-actionspec emit-fragment --job <name> --result <status> --file <fragment.json>`
-- `github-actionspec capture --workflow <name> --job-file <file-dir-or-glob> --output <actual.json>`
-- `github-actionspec discover --repo <path>`
-- `github-actionspec bootstrap --repo <path> --workflow <name> [--actual <payload.json>] [--force]`
-- `github-actionspec validate-callers --repo <path> [--report-file <report.json>] [--dry-run]`
-- `github-actionspec validate --schema <file> --schema <file> --contract <file> --actual <file-or-glob>`
-- `github-actionspec validate-repo --repo <path> [--workflow <name>] --actual <file-dir-or-glob> [--report-file <report.json>] [--dry-run]`
-- `github-actionspec dashboard --current <report.json> [--baseline <report.json>] [--output-key <name>] --output <dashboard.md>`
-
-To scaffold the first contract test from an existing workflow:
+Bootstrap a starter contract and baseline payload:
 
 ```bash
 just bootstrap-actionspec . ci.yml
 ```
 
-You can also pass a workflow path such as `.github/workflows/ci.yml`. Bootstrap normalizes that to
-the workflow file name (`ci.yml`) before it writes the declaration, payload, and CI snippet.
-
-That creates:
+That writes:
 
 - `.github/actionspec/ci/main.cue`
 - `tests/fixtures/ci/baseline.json`
 - `.github/actionspec/ci/bootstrap-ci-snippet.yml`
 
-If you already captured a real workflow payload, seed the starter files from that payload instead of from a synthetic all-success baseline:
+Validate that payload and render both artifacts:
 
 ```bash
-github-actionspec bootstrap \
-  --repo . \
-  --workflow ci.yml \
-  --actual .github/actionspec-artifacts/ci-main.json
-```
-
-The generated CI snippet validates the baseline payload through the GitHub Action and uploads the
-report and dashboard artifacts so a repository can get its first contract check into CI without
-writing the integration from scratch.
-
-For larger workflows, bootstrap keeps the starting point intentionally simple:
-
-- every discovered job is captured in the baseline payload
-- synthetic baselines default jobs to `success`
-- captured payloads preserve observed refs, inputs, outputs, matrix values, and steps
-- the generated snippet points at the baseline payload with a repo-relative path so it can be
-  pasted into CI directly
-
-To measure bootstrap performance against a large synthetic workflow, run:
-
-```bash
-just bench-bootstrap
-```
-
-That executes the ignored bootstrap benchmark in release mode and prints the total and
-per-iteration time for a large generated workflow graph.
-
-For the common local review flow, use one command to produce both artifacts:
-
-```bash
-just validate-repo-dashboard . ci.yml .github/actionspec-artifacts \
+just validate-repo-dashboard . ci.yml \
+  tests/fixtures/ci/baseline.json \
   target/actionspec/validation-report.json \
   target/actionspec/dashboard.md
 ```
 
-That command:
-
-- runs `validate-repo`
-- writes the JSON report
-- renders the markdown dashboard from that report
-- returns the original validation status so it still works in CI
-
-## Emit Fragments
-
-The intended producer flow is one job, one fragment, one final capture step.
-
-`emit-fragment` writes the per-job JSON fragment that `capture` already understands, so calling repositories do not need to hand-roll the shape themselves.
-
-Basic fragment:
-
-```bash
-just emit-fragment build success .github/actionspec-fragments/build.json
-```
-
-Fragment with outputs, matrix values, and step outputs:
-
-```bash
-github-actionspec emit-fragment \
-  --job build \
-  --result success \
-  --output contract_build=build-ts-service \
-  --output artifact_name=build-ts-service-linux-amd64 \
-  --matrix app=build-ts-service \
-  --matrix shard=2 \
-  --step-conclusion compile=success \
-  --step-output compile.digest=sha256:abc123 \
-  --file .github/actionspec-fragments/build.json
-```
-
-This writes:
-
-```json
-{
-  "job": "build",
-  "result": "success",
-  "outputs": {
-    "artifact_name": "build-ts-service-linux-amd64",
-    "contract_build": "build-ts-service"
-  },
-  "matrix": {
-    "app": "build-ts-service",
-    "shard": 2
-  },
-  "steps": {
-    "compile": {
-      "conclusion": "success",
-      "outputs": {
-        "digest": "sha256:abc123"
-      }
-    }
-  }
-}
-```
-
-`--matrix` accepts JSON scalars and arrays when possible, then falls back to strings. This means `shard=2` is written as a number, `enabled=true` as a boolean, and `app=build-ts-service` as a string.
-
-## Capture Payloads
-
-The easiest way to make workflow validation broadly usable is to standardize the payload generation step.
-
-`capture` merges one JSON fragment per job into the normalized `run` payload that `validate-repo` already understands. A fragment looks like:
-
-```json
-{
-  "job": "build",
-  "result": "success",
-  "matrix": {
-    "app": "build-ts-service",
-    "target": "linux-amd64"
-  },
-  "outputs": {
-    "contract_build": "build-ts-service"
-  },
-  "steps": {
-    "compile": {
-      "conclusion": "success",
-      "outputs": {
-        "digest": "sha256:abc123"
-      }
-    }
-  }
-}
-```
-
-Capture a full workflow payload from a directory of fragments with:
-
-```bash
-just capture ci.yml .github/actionspec-artifacts/ci-main.json .github/actionspec-fragments
-```
-
-The CLI also supports repeated workflow inputs and explicit refs:
-
-```bash
-github-actionspec capture \
-  --workflow ci.yml \
-  --ref main \
-  --input run_ci=true \
-  --input run_pages=false \
-  --job-file .github/actionspec-fragments \
-  --output .github/actionspec-artifacts/ci-main.json
-```
-
-Once captured, validate the resulting payload with the existing repo flow:
-
-```bash
-just validate-repo . ci.yml .github/actionspec-artifacts/ci-main.json
-```
-
-In GitHub Actions, the intended pattern is:
-
-- each job writes one fragment JSON file
-- the final aggregation job downloads those fragment artifacts
-- the aggregation job runs `capture`
-- the same job runs `validate-repo` and uploads the report or dashboard artifact
-
-Reusable workflows can also be treated as static contracts. `validate-callers` scans local `uses: ./.github/workflows/*.yml` jobs and checks that callers still match the callee workflow's `workflow_call` inputs and outputs.
-
-Example reusable workflow interface:
-
-```yaml
-on:
-  workflow_call:
-    inputs:
-      environment:
-        type: string
-        required: true
-    outputs:
-      image_tag:
-        value: ${{ jobs.build.outputs.image_tag }}
-```
-
-Example caller:
-
-```yaml
-jobs:
-  build:
-    uses: ./.github/workflows/reusable-build.yml
-    with:
-      environment: staging
-
-  summarize:
-    needs: [build]
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "${{ needs.build.outputs.image_tag }}"
-```
-
-Validate those caller contracts locally with:
-
-```bash
-just validate-callers .
-```
-
-To keep the run non-blocking and inspect the full caller/callee analysis later, write a report in dry mode:
-
-```bash
-just validate-callers-report . target/actionspec/callers-report.json
-```
-
-The command reports:
-
-- missing required reusable-workflow inputs
-- unexpected caller inputs
-- obvious literal type mismatches for `string`, `boolean`, and `number` inputs
-- missing required reusable-workflow secrets
-- unexpected caller secrets when secrets are passed explicitly
-- `needs.<job>.outputs.<name>` references to outputs the called workflow no longer exports
-
-If the caller uses `secrets: inherit`, the report records that inheritance mode instead of enumerating secret values.
-
-The caller report also preserves the static analysis surface for each reusable workflow job:
-
-- caller workflow path
-- called reusable workflow path
-- provided `with:` inputs
-- provided secret names, or whether the call inherits secrets
-- referenced `needs.<job>.outputs.*` values
-- issues attached to that call
-
-Matrix-aware contracts can assert both matrix dimensions and job outputs. For example, this contract keeps a `build-ts-service` matrix entry aligned with the emitted `contract_build` output:
-
-```cue
-package actionspec
-
-run: #WorkflowRun & {
-  workflow: "build.yml"
-  jobs: {
-    build: {
-      result: "success"
-      matrix: {
-        app: "build-ts-service"
-      }
-      outputs: {
-        contract_build: "build-ts-service"
-      }
-    }
-  }
-}
-```
-
-Matching normalized payload:
-
-```json
-{
-  "run": {
-    "workflow": "build.yml",
-    "jobs": {
-      "build": {
-        "result": "success",
-        "matrix": {
-          "app": "build-ts-service"
-        },
-        "outputs": {
-          "contract_build": "build-ts-service"
-        }
-      }
-    }
-  }
-}
-```
-
-If the workflow emits a different output for that same matrix entry, validation fails. For example, this payload should be rejected because the matrix variant and the emitted contract name diverge:
-
-```json
-{
-  "run": {
-    "workflow": "build.yml",
-    "jobs": {
-      "build": {
-        "result": "success",
-        "matrix": {
-          "app": "build-ts-service"
-        },
-        "outputs": {
-          "contract_build": "contract-build"
-        }
-      }
-    }
-  }
-}
-```
-
-Cross-job invariants work the same way. This contract says the `publish` job must reuse the exact image tag emitted by `build`:
-
-```cue
-package actionspec
-
-run: #WorkflowRun & {
-  workflow: "release.yml"
-  jobs: {
-    build: {
-      result: "success"
-      outputs: {
-        image_tag: string
-      }
-    }
-    publish: {
-      result: "success"
-      outputs: {
-        published_tag: run.jobs.build.outputs.image_tag
-      }
-    }
-  }
-}
-```
-
-That pattern is useful when one workflow job promotes an artifact, image tag, or contract name produced by an earlier job and you want the contract to reject drift between them.
-
-You can validate that pattern locally with:
-
-```bash
-github-actionspec validate \
-  --schema schema/workflow_run.cue \
-  --contract .github/actionspec/build/main.cue \
-  --actual .github/actionspec-artifacts/build-ts-service.json
-```
-
-When you generate a validation report or dashboard, the matrix labels and job outputs are preserved and rendered so the PR comment can show which variant changed and what it emitted, for example `app=build-ts-service, target=linux-amd64` together with `build.contract_build=build-ts-service`.
-
-To analyze workflow execution output without failing the command, run `validate-repo` in dry mode and keep the report:
-
-```bash
-just validate-repo-report-dry . ci.yml .github/actionspec-artifacts target/actionspec/validation-report.json
-```
-
-That still runs the full validation logic and records failures in the report, but exits successfully so you can inspect the produced values locally or upload the artifact from CI.
-
-If you want both the report and dashboard from one dry run:
-
-```bash
-just validate-repo-dashboard . ci.yml .github/actionspec-artifacts \
-  target/actionspec/validation-report.json \
-  target/actionspec/dashboard.md "" "" true
-```
-
-To keep the dashboard compact, you can choose which outputs appear:
-
-```bash
-github-actionspec dashboard \
-  --current target/actionspec/report.json \
-  --output-key contract_build \
-  --output-key artifact_name \
-  --output target/actionspec/dashboard.md
-```
-
-## GitHub Action
-
-This repository also exposes a Docker-based GitHub Action for `emit-fragment`, `capture`, and `validate-repo`. The action runs the bundled `github-actionspec` binary together with the bundled `cue` runtime, so the calling workflow only needs a checked out repository plus either per-job fields, job fragments, or a normalized JSON payload.
+If you want the smallest GitHub Action integration, start from the generated snippet or use:
 
 ```yaml
 - uses: actions/checkout@v6
 
-- name: Validate workflow contracts
-  uses: v4lproik/github-actionspec-rs@main
-
-- name: Emit one job fragment
-  uses: v4lproik/github-actionspec-rs@main
-  with:
-    mode: emit-fragment
-    emit-job: build
-    emit-result: success
-    emit-outputs: contract_build=build-ts-service
-
-- name: Capture a normalized payload from job fragments
-  uses: v4lproik/github-actionspec-rs@main
-  with:
-    mode: capture
-    workflow: ci.yml
-    ref-name: main
-    capture-job-files: .github/actionspec-fragments
-
-- name: Validate one workflow explicitly
-  uses: v4lproik/github-actionspec-rs@main
-  with:
-    workflow: ci.yml
-    actual: .github/actionspec-artifacts/ci-main.json
-```
-
-By convention, `validate-repo` mode defaults to:
-
-- `repo: .`
-- `declarations-dir: .github/actionspec`
-- `actual: .github/actionspec-artifacts`
-- inferring `workflow` from the payloads when they all belong to the same workflow
-
-That means the shortest setup is just:
-
-```yaml
-- uses: actions/checkout@v6
-
-- uses: v4lproik/github-actionspec-rs@main
-```
-
-Inputs:
-
-- `mode`: action mode. Supported values are `emit-fragment`, `capture`, and `validate-repo`. Defaults to `validate-repo`
-- `emit-job`: job id written into the fragment in `emit-fragment` mode
-- `emit-result`: job result written into the fragment in `emit-fragment` mode
-- `emit-outputs`: optional newline-separated list of `KEY=VALUE` job outputs for `emit-fragment` mode
-- `emit-matrix`: optional newline-separated list of `KEY=VALUE` matrix entries for `emit-fragment` mode
-- `emit-step-conclusions`: optional newline-separated list of `STEP_ID=CONCLUSION` values for `emit-fragment` mode
-- `emit-step-outputs`: optional newline-separated list of `STEP_ID.OUTPUT_NAME=VALUE` values for `emit-fragment` mode
-- `emit-file`: path where the action writes the job fragment JSON in `emit-fragment` mode. Defaults to `/github/runner_temp/github-actionspec-fragments/current/job.json`
-- `repo`: target repository root containing `.github/actionspec` declarations. Defaults to `.`
-- `workflow`: workflow file name to capture or validate. Optional for `validate-repo` when the provided payloads all belong to the same workflow
-- `ref-name`: optional workflow ref recorded in `capture` mode
-- `capture-job-files`: one job fragment JSON file, a directory, a glob pattern, or a newline-separated list of those inputs for `capture` mode. Defaults to `.github/actionspec-fragments`
-- `capture-inputs`: optional newline-separated list of `KEY=VALUE` workflow inputs recorded in `capture` mode
-- `capture-file`: path where the action writes the normalized workflow payload in `capture` mode. Defaults to `/github/runner_temp/github-actionspec-capture/current/workflow-run.json`
-- `actual`: path to one normalized workflow run JSON payload, a directory containing JSON payloads, a glob pattern, or a newline-separated list of payloads and glob patterns. Defaults to `.github/actionspec-artifacts`
-- `declarations-dir`: custom declarations directory. Defaults to `.github/actionspec`
-- `report-file`: path where the action writes the JSON validation report. Defaults to `/github/runner_temp/github-actionspec-dashboard/current/validation-report.json`
-- `baseline-report`: optional path to a previous JSON validation report used to compute matrix diffs
-- `dashboard-file`: path where the action writes the markdown matrix dashboard. When omitted, the action writes `dashboard.md` next to `report-file`
-- `dashboard-output-keys`: optional newline-separated list of output keys to include in the dashboard and PR comment
-- `write-summary`: whether to append the matrix dashboard to the job summary. Defaults to `true`
-- `comment-pr`: whether to upsert a PR comment containing a short validation summary and the full matrix dashboard. Defaults to `false`
-- `comment-title`: title used for the PR comment. Defaults to `Workflow Matrix Dashboard`
-- `comment-tag`: stable marker used to find and update the existing PR comment. Defaults to `github-actionspec-matrix`
-- `github-token`: token used for PR comment upserts when `comment-pr` is enabled
-
-Examples:
-
-```yaml
-- name: Emit one fragment directly from a job
-  id: actionspec-fragment
-  uses: v4lproik/github-actionspec-rs@main
-  with:
-    mode: emit-fragment
-    emit-job: build
-    emit-result: success
-    emit-outputs: |
-      contract_build=build-ts-service
-      artifact_name=build-ts-service-linux-amd64
-    emit-matrix: |
-      app=build-ts-service
-      shard=2
-    emit-step-conclusions: |
-      compile=success
-    emit-step-outputs: |
-      compile.digest=sha256:abc123
-
-```
-
-```yaml
-- name: Emit fragments, capture them, and validate the workflow
-  id: actionspec-detect-changes
-  uses: v4lproik/github-actionspec-rs@main
-  with:
-    mode: emit-fragment
-    emit-job: detect-changes
-    emit-result: success
-    emit-outputs: |
-      run_ci=true
-      run_pages=false
-    emit-file: /github/runner_temp/github-actionspec-e2e/fragments/detect-changes.json
-
-- id: actionspec-lint
-  uses: v4lproik/github-actionspec-rs@main
-  with:
-    mode: emit-fragment
-    emit-job: lint
-    emit-result: success
-    emit-file: /github/runner_temp/github-actionspec-e2e/fragments/lint.json
-
-- id: actionspec-build
-  uses: v4lproik/github-actionspec-rs@main
-  with:
-    mode: emit-fragment
-    emit-job: build
-    emit-result: success
-    emit-file: /github/runner_temp/github-actionspec-e2e/fragments/build.json
-
-- id: actionspec-tests
-  uses: v4lproik/github-actionspec-rs@main
-  with:
-    mode: emit-fragment
-    emit-job: tests
-    emit-result: success
-    emit-file: /github/runner_temp/github-actionspec-e2e/fragments/tests.json
-
-- id: actionspec-docker
-  uses: v4lproik/github-actionspec-rs@main
-  with:
-    mode: emit-fragment
-    emit-job: docker
-    emit-result: success
-    emit-file: /github/runner_temp/github-actionspec-e2e/fragments/docker.json
-
-- id: actionspec-pages
-  uses: v4lproik/github-actionspec-rs@main
-  with:
-    mode: emit-fragment
-    emit-job: pages
-    emit-result: skipped
-    emit-file: /github/runner_temp/github-actionspec-e2e/fragments/pages.json
-
-- name: Capture the emitted fragments into one normalized payload
-  id: actionspec-capture
-  uses: v4lproik/github-actionspec-rs@main
-  with:
-    mode: capture
-    workflow: ci.yml
-    ref-name: main
-    capture-job-files: |
-      ${{ steps.actionspec-detect-changes.outputs.fragment-path }}
-      ${{ steps.actionspec-lint.outputs.fragment-path }}
-      ${{ steps.actionspec-build.outputs.fragment-path }}
-      ${{ steps.actionspec-tests.outputs.fragment-path }}
-      ${{ steps.actionspec-docker.outputs.fragment-path }}
-      ${{ steps.actionspec-pages.outputs.fragment-path }}
-    capture-file: /github/runner_temp/github-actionspec-e2e/current/workflow-run.json
-
-- name: Validate the captured payload
-  uses: v4lproik/github-actionspec-rs@main
-  with:
-    workflow: ci.yml
-    actual: ${{ steps.actionspec-capture.outputs.capture-path }}
-    report-file: /github/runner_temp/github-actionspec-e2e/current/validation-report.json
-    dashboard-file: /github/runner_temp/github-actionspec-e2e/current/dashboard.md
-    write-summary: false
-```
-
-```yaml
-- name: Capture the workflow payload from job fragments
-  id: actionspec-capture
-  uses: v4lproik/github-actionspec-rs@main
-  with:
-    mode: capture
-    workflow: ci.yml
-    ref-name: ${{ github.ref_name }}
-    capture-inputs: |
-      run_ci=true
-      run_pages=false
-    capture-job-files: |
-      .github/actionspec-fragments/build.json
-      .github/actionspec-fragments/tests.json
-
-- name: Validate one payload
-  uses: v4lproik/github-actionspec-rs@main
-  with:
-    workflow: ci.yml
-    actual: .github/actionspec-artifacts/ci-main.json
-
-- name: Validate a whole folder of payloads
-  uses: v4lproik/github-actionspec-rs@main
-  with:
-    workflow: ci.yml
-    actual: .github/actionspec-artifacts/passing
-
-- name: Validate using the default artifacts directory and inferred workflow
-  uses: v4lproik/github-actionspec-rs@main
-
-- name: Validate an explicit list of payloads
-  uses: v4lproik/github-actionspec-rs@main
-  with:
-    actual: |
-      .github/actionspec-artifacts/ci-main.json
-      .github/actionspec-artifacts/ci-main-pages.json
-
-- name: Validate payloads through a glob pattern
-  uses: v4lproik/github-actionspec-rs@main
-  with:
-    repo: .
-    workflow: ci.yml
-    actual: .github/actionspec-artifacts/**/*.json
-
-- name: Validate matrix payloads for a build workflow
-  uses: v4lproik/github-actionspec-rs@main
-  with:
-    repo: .
-    workflow: build.yml
-    actual: |
-      .github/actionspec-artifacts/build-ts-service.json
-      .github/actionspec-artifacts/build-rust-service.json
-    dashboard-output-keys: |
-      contract_build
-      artifact_name
-
-- name: Validate, diff against a previous report, and comment on the PR
+- name: Validate ci.yml contract
   id: actionspec
   uses: v4lproik/github-actionspec-rs@main
   with:
-    repo: .
     workflow: ci.yml
-    actual: .github/actionspec-artifacts/**/*.json
-    report-file: ${{ runner.temp }}/github-actionspec-dashboard/current/validation-report.json
-    baseline-report: ${{ runner.temp }}/github-actionspec-dashboard/baseline/validation-report.json
-    dashboard-file: ${{ runner.temp }}/github-actionspec-dashboard/current/dashboard.md
-    comment-pr: true
-    github-token: ${{ github.token }}
-
-- name: Upload the matrix artifact
-  uses: actions/upload-artifact@v4
-  with:
-    name: ci-matrix-dashboard
-    path: |
-      ${{ steps.actionspec.outputs.report-path }}
-      ${{ steps.actionspec.outputs.dashboard-path }}
+    actual: tests/fixtures/ci/baseline.json
+    report-file: /github/runner_temp/actionspec/current/validation-report.json
+    dashboard-file: /github/runner_temp/actionspec/current/dashboard.md
 ```
 
-The emit-fragment mode writes `fragment-path` to `GITHUB_OUTPUT`. The capture mode writes `capture-path`. The validate mode writes `report-path` and `dashboard-path`.
+## What You Get
 
-To show the difference between the current and previous matrix, download the earlier report artifact before the action step and pass its report JSON through `baseline-report`. The action updates a single PR comment identified by `comment-tag`, with a short status summary followed by the full matrix, so the discussion stays in one place instead of growing a new comment on every push.
+- A JSON validation report with workflow metadata, job results, matrix labels, outputs, and typed issues.
+- A markdown dashboard that fits job summaries, uploaded artifacts, and PR comments.
+- Baseline diff support so a PR can show what changed from an earlier run.
+- Runtime-backed validation once you want to validate a real CI run on `main`.
 
-Example:
+Failed payloads also carry a structured `issues` list in the report. Common CUE failures are classified as:
 
-```yaml
-- name: Download previous matrix artifact
-  uses: dawidd6/action-download-artifact@v9
-  with:
-    workflow: ci.yml
-    branch: main
-    name: ci-matrix-dashboard
-    path: ${{ runner.temp }}/github-actionspec-dashboard/baseline
-    if_no_artifact_found: warn
-```
+- `value_conflict`
+- `unexpected_field`
+- `missing_field`
+- `constraint_violation`
+- `cue_error`
 
-## Coverage
+The dashboard starts with a short issue summary so reviewers can see what kind of failures dominate a run before scanning individual payload rows.
 
-The target for this repo is to stay close to `90%` test coverage.
+## Choose The Right Mode
 
-Use:
+| Goal | Use |
+| --- | --- |
+| Lint reusable workflow callers | `validate-callers` |
+| Validate one contract against one or more payloads | `validate-repo` |
+| Produce one fragment per job in Actions | `emit-fragment` |
+| Merge fragments into one normalized payload | `capture` |
+| Render a PR-friendly matrix | `dashboard` |
+| Start a contract test from an existing workflow | `bootstrap` |
 
-```bash
-just coverage
-just coverage-summary
-```
+`validate-repo` accepts individual files, directories, globs, and newline-separated file lists. That makes it easy to validate one payload locally or a whole fixture set in CI.
 
-These commands run inside the repository Docker image. Use `just coverage` for the HTML report and `just coverage-summary` for the terminal summary.
+## Docs
 
-For CI and Codecov uploads, use:
+- [Overview](https://v4lproik.github.io/github-actionspec-rs/)
+- [Getting Started](https://v4lproik.github.io/github-actionspec-rs/getting-started.html)
+- [Workflow Flow](https://v4lproik.github.io/github-actionspec-rs/workflow-flow.html)
+- [Reports](https://v4lproik.github.io/github-actionspec-rs/reports.html)
+- [Troubleshooting](https://v4lproik.github.io/github-actionspec-rs/troubleshooting.html)
+- [CI Reference](https://v4lproik.github.io/github-actionspec-rs/ci-reference.html)
 
-```bash
-just coverage-ci
-```
+## Maintainers
 
-This emits `target/llvm-cov/lcov.info`, which the repository workflow uploads to Codecov.
-
-## CI
-
-GitHub Actions must call `just`, not raw `cargo`, `gh`, or `mise` command sequences.
-
-- The workflow starts with a `detect-changes` job powered by `dorny/paths-filter` and filter rules stored in `.github/filters/changes.yml`.
-- Reusable workflow interfaces are linted through `validate-callers` as part of `just lint`.
-- Build, lint, test, remote action integration, runtime verification, docker publish, and Pages run in that order when the relevant change filters match.
-- The workflow can also be started manually through `workflow_dispatch`; manual runs force the full CI path even if no matching file changes are present.
-- Build: `just build`
-- Lint: `just lint`
-- Test: `just test`
-- Matrix report: `just validate-repo-report . ci.yml tests/fixtures/ci target/actionspec/validation-report.json`
-- Matrix dashboard: `just dashboard-report target/actionspec/validation-report.json target/actionspec/dashboard.md`
-- Coverage upload: `just coverage-ci`
-- Local full pass: `just ci`
-- The remote action integration check now lives inside the main `CI` workflow and validates the published `v4lproik/github-actionspec-rs@main` action reference end to end against this repository's own `ci.yml` fixtures on pushes to `main`.
-- On pushes to `main`, the workflow also captures the real job results from that CI run, validates the captured payload against `.github/actionspec/ci/main.cue`, and uploads a `ci-runtime-contract` artifact containing:
-  - the normalized captured payload
-  - the JSON validation report
-  - the rendered dashboard
-- The `tests` job publishes a `ci-matrix-dashboard` artifact with the current validation report and a markdown matrix. On pull requests, the workflow also updates a single PR comment with that matrix and diffs it against the latest available baseline artifact.
-
-## Docker Parity
-
-The Docker-backed commands mount the repository into `/workspace` and preserve host file ownership by running the container with the current user id. Cargo cache data is stored under `.docker-cache/`, which is gitignored. Image builds are routed through `docker buildx bake` so the build definition stays centralized in the bake file.
-
-## Runtime Image
-
-The repository also exposes a runtime image target for the CLI itself:
-
-```bash
-just docker-build-runtime
-just docker-run-runtime
-```
-
-The runtime target includes both `github-actionspec` and the `cue` CLI, so commands such as `validate` and `validate-repo` work inside the image without requiring extra host tooling.
-
-If you want to publish a public image to Docker Hub, the repository already exposes a push entrypoint:
-
-```bash
-just docker-push-runtime docker.io/<namespace>/github-actionspec-rs:latest
-```
-
-The CI workflow now verifies the runtime image through `just runtime-ci`. Publication is gated on successful checks and coverage for pushes to `main`, and the publish job is skipped entirely if the workflow is cancelled or if Docker Hub credentials are not configured.
-
-Docker documents Docker Hub public repositories as unlimited on the free tier, subject to fair use. Source: [Docker Hub docs](https://docs.docker.com/docker-hub/) and [Docker pricing](https://www.docker.com/pricing/).
-
-## Pull Requests
-
-Open repository PRs through `just` so the command surface stays centralized:
-
-```bash
-just pr-create
-just pr-create-draft
-```
-
-Both recipes default the base branch to `main`.
+Repository-specific development commands, CI rules, and PR conventions now live in [CONTRIBUTING.md](/Users/v4lproik/Programmation/v4lproik/github-actionspec-rs/CONTRIBUTING.md).

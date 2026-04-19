@@ -208,6 +208,10 @@ fn writes_report_file_before_failing_validation() {
                 .error
                 .as_deref()
                 .is_some_and(|error| error.contains("build should not be skipped"))
+            && actual.issues.len() == 1
+            && actual.issues[0]
+                .message
+                .contains("build should not be skipped")
     }));
 }
 
@@ -254,6 +258,10 @@ fn dry_run_preserves_validation_report_without_failing() {
         .error
         .as_deref()
         .is_some_and(|error| error.contains("build should not be skipped")));
+    assert_eq!(report.actuals[0].issues.len(), 1);
+    assert!(report.actuals[0].issues[0]
+        .message
+        .contains("build should not be skipped"));
 }
 
 #[test]

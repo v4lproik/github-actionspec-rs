@@ -6,7 +6,10 @@ use std::path::Path;
 use serde_json::Value;
 
 use crate::errors::AppError;
-use crate::types::{ActualValidationReport, ValidationReport, ValidationStatus};
+use crate::types::{
+    ActualValidationReport, ValidationIssue, ValidationIssueKind, ValidationReport,
+    ValidationStatus,
+};
 
 fn count_status(actuals: &[ActualValidationReport], status: ValidationStatus) -> usize {
     actuals
@@ -29,6 +32,18 @@ fn collect_job_names(
         }
     }
     job_names.into_iter().collect()
+}
+
+fn count_issue_kinds(actuals: &[ActualValidationReport]) -> BTreeMap<ValidationIssueKind, usize> {
+    let mut counts = BTreeMap::new();
+
+    for actual in actuals {
+        for issue in &actual.issues {
+            *counts.entry(issue.kind).or_insert(0) += 1;
+        }
+    }
+
+    counts
 }
 
 fn compare_actual(
@@ -70,6 +85,14 @@ fn compare_actual(
             "outputs {}->{}",
             render_outputs_label(baseline.outputs.as_ref(), output_keys),
             render_outputs_label(current.outputs.as_ref(), output_keys)
+        ));
+    }
+
+    if current.issues != baseline.issues {
+        changes.push(format!(
+            "issues {}->{}",
+            render_issue_delta_label(&baseline.issues),
+            render_issue_delta_label(&current.issues)
         ));
     }
 
@@ -151,6 +174,49 @@ fn render_outputs_label(
         .join(", ")
 }
 
+fn render_issue_summary(issues: &[ValidationIssue]) -> String {
+    if issues.is_empty() {
+        return "-".to_owned();
+    }
+
+    issues
+        .iter()
+        .map(ValidationIssue::summary_label)
+        .collect::<Vec<_>>()
+        .join("<br>")
+}
+
+fn render_issue_delta_label(issues: &[ValidationIssue]) -> String {
+    if issues.is_empty() {
+        return "0".to_owned();
+    }
+
+    issues
+        .iter()
+        .map(ValidationIssue::delta_label)
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn write_issue_summary_section(
+    markdown: &mut String,
+    title: &str,
+    counts: &BTreeMap<ValidationIssueKind, usize>,
+) {
+    // Keep the summary compact because it is repeated in job summaries and PR comments.
+    let _ = writeln!(markdown, "{title}");
+    let _ = writeln!(markdown);
+
+    if counts.is_empty() {
+        let _ = writeln!(markdown, "- none");
+        return;
+    }
+
+    for (kind, count) in counts {
+        let _ = writeln!(markdown, "- {}: `{count}`", kind.label());
+    }
+}
+
 pub fn load_validation_report(path: &Path) -> Result<ValidationReport, AppError> {
     let contents = fs::read_to_string(path)?;
     Ok(serde_json::from_str(&contents)?)
@@ -163,6 +229,8 @@ pub fn render_dashboard_markdown(
 ) -> String {
     let mut markdown = String::new();
     let job_names = collect_job_names(current, baseline);
+    let current_issue_counts = count_issue_kinds(&current.actuals);
+    let baseline_issue_counts = baseline.map(|report| count_issue_kinds(&report.actuals));
 
     let _ = writeln!(markdown, "## Validation Matrix");
     let _ = writeln!(markdown);
@@ -203,13 +271,24 @@ pub fn render_dashboard_markdown(
     }
 
     let _ = writeln!(markdown);
-    let _ = write!(markdown, "| Payload | Ref | Matrix | Outputs | Status |");
+    write_issue_summary_section(&mut markdown, "### Current Issues", &current_issue_counts);
+
+    if let Some(baseline_issue_counts) = baseline_issue_counts.as_ref() {
+        let _ = writeln!(markdown);
+        write_issue_summary_section(&mut markdown, "### Baseline Issues", baseline_issue_counts);
+    }
+
+    let _ = writeln!(markdown);
+    let _ = write!(
+        markdown,
+        "| Payload | Ref | Matrix | Outputs | Issues | Status |"
+    );
     for job_name in &job_names {
         let _ = write!(markdown, " {} |", job_name);
     }
     let _ = writeln!(markdown, " Delta |");
 
-    let _ = write!(markdown, "| --- | --- | --- | --- | --- |");
+    let _ = write!(markdown, "| --- | --- | --- | --- | --- | --- |");
     for _ in &job_names {
         let _ = write!(markdown, " --- |");
     }
@@ -226,11 +305,12 @@ pub fn render_dashboard_markdown(
     for actual in &current.actuals {
         let _ = write!(
             markdown,
-            "| `{}` | `{}` | `{}` | `{}` | `{:?}` |",
+            "| `{}` | `{}` | `{}` | `{}` | {} | `{:?}` |",
             actual.actual_path.display(),
             actual.ref_name.as_deref().unwrap_or("-"),
             render_matrix_label(actual.matrix.as_ref()),
             render_outputs_label(actual.outputs.as_ref(), output_keys),
+            render_issue_summary(&actual.issues),
             actual.status
         );
         for job_name in &job_names {
@@ -303,6 +383,18 @@ mod tests {
         outputs: Option<OutputEntries<'_>>,
         jobs: &[(&str, &str)],
     ) -> ActualValidationReport {
+        let issues = if status == ValidationStatus::Failed {
+            vec![ValidationIssue {
+                kind: ValidationIssueKind::ValueConflict,
+                path: Some("run.jobs.build.outputs.contract_build".to_owned()),
+                message: "conflicting values build-rust-service and build-ts-service".to_owned(),
+                expected: Some("build-rust-service".to_owned()),
+                actual: Some("build-ts-service".to_owned()),
+            }]
+        } else {
+            Vec::new()
+        };
+
         ActualValidationReport {
             actual_path: PathBuf::from(path),
             workflow: "ci.yml".to_owned(),
@@ -331,6 +423,7 @@ mod tests {
                     })
                     .collect()
             }),
+            issues,
             error: None,
         }
     }
@@ -389,10 +482,16 @@ mod tests {
         );
 
         assert!(markdown.contains("Validation Matrix"));
-        assert!(markdown
-            .contains("| Payload | Ref | Matrix | Outputs | Status | build | pages | Delta |"));
+        assert!(markdown.contains("### Current Issues"));
+        assert!(markdown.contains("- conflict: `1`"));
+        assert!(markdown.contains("### Baseline Issues"));
+        assert!(markdown.contains("- none"));
+        assert!(markdown.contains(
+            "| Payload | Ref | Matrix | Outputs | Issues | Status | build | pages | Delta |"
+        ));
         assert!(markdown.contains("app=build-ts-service"));
         assert!(markdown.contains("build.contract_build=build-ts-service"));
+        assert!(markdown.contains("conflict: run.jobs.build.outputs.contract_build"));
         assert!(!markdown.contains("artifact_name"));
         assert!(markdown.contains("matrix app=build-rust-service->app=build-ts-service"));
         assert!(markdown.contains(
@@ -401,12 +500,69 @@ mod tests {
         assert!(markdown.contains("ci-main-success.json"));
         assert!(markdown.contains("pages success->skipped"));
         assert!(
-            markdown.contains(
-                "| `tests/fixtures/ci/ci-build-skipped.json` | `main` | `app=build-ts-service` | `build.contract_build=build-ts-service` | `Failed` |"
-            )
+            markdown.contains("| `tests/fixtures/ci/ci-build-skipped.json` | `main` | `app=build-ts-service` | `build.contract_build=build-ts-service` | conflict: run.jobs.build.outputs.contract_build | `Failed` |")
         );
         assert!(markdown.contains(" new |"));
         assert!(markdown.contains("Removed Since Baseline"));
         assert!(markdown.contains("ci-removed.json"));
+    }
+
+    #[test]
+    fn summarizes_multiple_issue_kinds_across_payloads() {
+        let report = ValidationReport {
+            workflow: "ci.yml".to_owned(),
+            declaration_path: PathBuf::from(".github/actionspec/ci/main.cue"),
+            actuals: vec![
+                ActualValidationReport {
+                    actual_path: PathBuf::from("tests/fixtures/ci/ci-main-success.json"),
+                    workflow: "ci.yml".to_owned(),
+                    ref_name: Some("main".to_owned()),
+                    status: ValidationStatus::Failed,
+                    jobs: BTreeMap::from([("build".to_owned(), "failure".to_owned())]),
+                    matrix: None,
+                    outputs: None,
+                    issues: vec![
+                        ValidationIssue {
+                            kind: ValidationIssueKind::ValueConflict,
+                            path: Some("run.jobs.build.outputs.contract_build".to_owned()),
+                            message: "conflicting values a and b".to_owned(),
+                            expected: Some("a".to_owned()),
+                            actual: Some("b".to_owned()),
+                        },
+                        ValidationIssue {
+                            kind: ValidationIssueKind::MissingField,
+                            path: Some("run.jobs.publish.outputs.image_tag".to_owned()),
+                            message: "field is required but not present".to_owned(),
+                            expected: None,
+                            actual: None,
+                        },
+                    ],
+                    error: Some("cue vet failed".to_owned()),
+                },
+                ActualValidationReport {
+                    actual_path: PathBuf::from("tests/fixtures/ci/ci-main-pages.json"),
+                    workflow: "ci.yml".to_owned(),
+                    ref_name: Some("main".to_owned()),
+                    status: ValidationStatus::Failed,
+                    jobs: BTreeMap::from([("pages".to_owned(), "failure".to_owned())]),
+                    matrix: None,
+                    outputs: None,
+                    issues: vec![ValidationIssue {
+                        kind: ValidationIssueKind::ValueConflict,
+                        path: Some("run.jobs.pages.result".to_owned()),
+                        message: "conflicting values success and failure".to_owned(),
+                        expected: Some("success".to_owned()),
+                        actual: Some("failure".to_owned()),
+                    }],
+                    error: Some("cue vet failed".to_owned()),
+                },
+            ],
+        };
+
+        let markdown = render_dashboard_markdown(&report, None, None);
+
+        assert!(markdown.contains("### Current Issues"));
+        assert!(markdown.contains("- conflict: `2`"));
+        assert!(markdown.contains("- missing field: `1`"));
     }
 }

@@ -1,5 +1,8 @@
 use assert_cmd::Command;
-use github_actionspec_rs::types::{ActualValidationReport, ValidationReport, ValidationStatus};
+use github_actionspec_rs::types::{
+    ActualValidationReport, ValidationIssue, ValidationIssueKind, ValidationReport,
+    ValidationStatus,
+};
 use tempfile::tempdir;
 
 use std::collections::BTreeMap;
@@ -8,6 +11,18 @@ use std::path::PathBuf;
 use serde_json::Value;
 
 fn actual(path: &str, status: ValidationStatus, jobs: &[(&str, &str)]) -> ActualValidationReport {
+    let issues = if status == ValidationStatus::Failed {
+        vec![ValidationIssue {
+            kind: ValidationIssueKind::ValueConflict,
+            path: Some("run.jobs.build.outputs.contract_build".to_owned()),
+            message: "conflicting values build-rust-service and build-ts-service".to_owned(),
+            expected: Some("build-rust-service".to_owned()),
+            actual: Some("build-ts-service".to_owned()),
+        }]
+    } else {
+        Vec::new()
+    };
+
     ActualValidationReport {
         actual_path: PathBuf::from(path),
         workflow: "ci.yml".to_owned(),
@@ -31,6 +46,7 @@ fn actual(path: &str, status: ValidationStatus, jobs: &[(&str, &str)]) -> Actual
                 ("contract_build".to_string(), "build-ts-service".to_string()),
             ]),
         )])),
+        issues,
         error: None,
     }
 }
@@ -87,9 +103,13 @@ fn dashboard_cli_writes_markdown_with_diff() {
 
     let markdown = std::fs::read_to_string(output).unwrap();
     assert!(markdown.contains("Validation Matrix"));
+    assert!(markdown.contains("### Current Issues"));
+    assert!(markdown.contains("- conflict: `1`"));
     assert!(markdown.contains("app=build-ts-service"));
     assert!(markdown.contains("build.contract_build=build-ts-service"));
+    assert!(markdown.contains("| Issues |"));
     assert!(!markdown.contains("artifact_name"));
     assert!(markdown.contains("status Failed->Passed"));
+    assert!(markdown.contains("issues conflict@run.jobs.build.outputs.contract_build->0"));
     assert!(markdown.contains("build skipped->success"));
 }

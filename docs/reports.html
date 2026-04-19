@@ -31,8 +31,9 @@
               <a href="index.html">Overview</a>
               <a href="getting-started.html">Getting Started</a>
               <a href="workflow-flow.html">Workflow Flow</a>
-              <a href="ci-reference.html">CI</a>
               <a class="site-nav-active" href="reports.html">Reports</a>
+              <a href="troubleshooting.html">Troubleshooting</a>
+              <a href="ci-reference.html">CI</a>
               <a href="https://github.com/v4lproik/github-actionspec-rs">GitHub</a>
             </nav>
           </header>
@@ -80,6 +81,15 @@
           <div class="section-heading">
             <p class="eyebrow">Generate them</p>
             <h2>Keep the output path explicit.</h2>
+            <p>
+              Failed payloads also keep a typed issue list in the JSON report, and the markdown
+              dashboard renders those issues inline so reviewers can see conflicts or unexpected
+              fields without opening raw CUE stderr.
+            </p>
+            <p>
+              The dashboard starts with a short issue summary so engineers can tell whether the run
+              mainly failed because of conflicts, missing fields, or generic CUE errors.
+            </p>
           </div>
 
           <div class="doc-grid">
@@ -120,6 +130,12 @@
     dashboard-file: /github/runner_temp/actionspec/current/dashboard.md
     comment-pr: true
     github-token: ${{ github.token }}</code></pre>
+          </article>
+          <article class="card">
+            <p>
+              If the dashboard says a payload failed but the reason is still unclear, open
+              <a href="troubleshooting.html">Troubleshooting</a> before dropping into raw logs.
+            </p>
           </article>
         </section>
 
