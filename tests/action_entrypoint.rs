@@ -411,6 +411,61 @@ exit 1
 }
 
 #[test]
+fn action_entrypoint_accepts_hyphenated_github_input_names() {
+    let temp = tempdir().unwrap();
+    let bin_dir = temp.path().join("bin");
+    fs::create_dir_all(&bin_dir).unwrap();
+
+    write_executable(
+        &bin_dir.join("github-actionspec"),
+        r#"#!/bin/sh
+set -eu
+cmd="$1"
+shift
+if [ "$cmd" = "emit-fragment" ]; then
+  args_log=""
+  for arg in "$@"; do
+    args_log="$args_log $arg"
+  done
+  printf '%s\n' "$args_log" > "${EMIT_ARGS_LOG}"
+  exit 0
+fi
+exit 1
+"#,
+    );
+
+    let output_file = temp.path().join("github_output.txt");
+    let args_log = temp.path().join("emit-args.log");
+
+    fs::write(&args_log, "").unwrap();
+
+    let status = Command::new("/bin/sh")
+        .arg("scripts/action/entrypoint.sh")
+        .arg("emit-fragment")
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .env(
+            "PATH",
+            format!("{}:{}", bin_dir.display(), std::env::var("PATH").unwrap()),
+        )
+        .env("INPUT_EMIT-JOB", "detect-changes")
+        .env("INPUT_EMIT-RESULT", "success")
+        .env("INPUT_EMIT-OUTPUTS", "run_ci=true\nrun_pages=false")
+        .env("INPUT_EMIT-FILE", temp.path().join("fragment.json"))
+        .env("GITHUB_OUTPUT", &output_file)
+        .env("EMIT_ARGS_LOG", &args_log)
+        .status()
+        .unwrap();
+
+    assert!(status.success());
+
+    let args = fs::read_to_string(&args_log).unwrap();
+    assert!(args.contains("--job detect-changes"));
+    assert!(args.contains("--result success"));
+    assert!(args.contains("--output run_ci=true"));
+    assert!(args.contains("--output run_pages=false"));
+}
+
+#[test]
 fn action_entrypoint_captures_workflow_payload_and_writes_capture_output() {
     let temp = tempdir().unwrap();
     let bin_dir = temp.path().join("bin");

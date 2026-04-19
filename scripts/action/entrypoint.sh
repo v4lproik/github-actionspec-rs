@@ -5,6 +5,32 @@ lower_bool() {
   printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]'
 }
 
+input_value() {
+  input_name="${1:-}"
+  default_value="${2-}"
+
+  if [ -z "${input_name}" ]; then
+    printf '%s' "${default_value}"
+    return
+  fi
+
+  raw_name="INPUT_${input_name}"
+  legacy_name="$(printf 'INPUT_%s' "${input_name}" | tr '-' '_')"
+  raw_value="$(printenv "${raw_name}" 2>/dev/null || true)"
+  if [ -n "${raw_value}" ]; then
+    printf '%s' "${raw_value}"
+    return
+  fi
+
+  eval "legacy_value=\${${legacy_name}:-}"
+  if [ -n "${legacy_value}" ]; then
+    printf '%s' "${legacy_value}"
+    return
+  fi
+
+  printf '%s' "${default_value}"
+}
+
 append_repeated_args() {
   value="${1:-}"
   flag="${2:-}"
@@ -29,7 +55,7 @@ append_repeated_args() {
 }
 
 resolve_dashboard_file() {
-  configured_dashboard_file="${INPUT_DASHBOARD_FILE:-}"
+  configured_dashboard_file="$(input_value 'DASHBOARD-FILE')"
   if [ -n "${configured_dashboard_file}" ]; then
     printf '%s' "${configured_dashboard_file}"
     return
@@ -61,7 +87,7 @@ write_outputs() {
 }
 
 write_summary() {
-  if [ "$(lower_bool "${INPUT_WRITE_SUMMARY:-true}")" != "true" ] || [ -z "${GITHUB_STEP_SUMMARY:-}" ]; then
+  if [ "$(lower_bool "$(input_value 'WRITE-SUMMARY' 'true')")" != "true" ] || [ -z "${GITHUB_STEP_SUMMARY:-}" ]; then
     return
   fi
 
@@ -100,11 +126,12 @@ render_pr_summary() {
 }
 
 upsert_pr_comment() {
-  if [ "$(lower_bool "${INPUT_COMMENT_PR:-false}")" != "true" ]; then
+  if [ "$(lower_bool "$(input_value 'COMMENT-PR' 'false')")" != "true" ]; then
     return
   fi
 
-  if [ -z "${INPUT_GITHUB_TOKEN:-}" ] || [ -z "${GITHUB_REPOSITORY:-}" ] || [ -z "${GITHUB_EVENT_PATH:-}" ]; then
+  github_token="$(input_value 'GITHUB-TOKEN')"
+  if [ -z "${github_token}" ] || [ -z "${GITHUB_REPOSITORY:-}" ] || [ -z "${GITHUB_EVENT_PATH:-}" ]; then
     return
   fi
 
@@ -113,8 +140,8 @@ upsert_pr_comment() {
     return
   fi
 
-  marker="<!-- github-actionspec-matrix:${INPUT_COMMENT_TAG:-github-actionspec-matrix} -->"
-  title="${INPUT_COMMENT_TITLE:-Workflow Matrix Dashboard}"
+  marker="<!-- github-actionspec-matrix:$(input_value 'COMMENT-TAG' 'github-actionspec-matrix') -->"
+  title="$(input_value 'COMMENT-TITLE' 'Workflow Matrix Dashboard')"
   payload="$(
     {
       printf '%s\n' "${marker}"
@@ -127,7 +154,7 @@ upsert_pr_comment() {
 
   comments_json="$(
     curl -fsSL \
-      -H "Authorization: Bearer ${INPUT_GITHUB_TOKEN}" \
+      -H "Authorization: Bearer ${github_token}" \
       -H "Accept: application/vnd.github+json" \
       "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/${pr_number}/comments"
   )"
@@ -139,7 +166,7 @@ upsert_pr_comment() {
   if [ -n "${comment_id}" ]; then
     curl -fsSL \
       -X PATCH \
-      -H "Authorization: Bearer ${INPUT_GITHUB_TOKEN}" \
+      -H "Authorization: Bearer ${github_token}" \
       -H "Accept: application/vnd.github+json" \
       -H "Content-Type: application/json" \
       "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/comments/${comment_id}" \
@@ -147,7 +174,7 @@ upsert_pr_comment() {
   else
     curl -fsSL \
       -X POST \
-      -H "Authorization: Bearer ${INPUT_GITHUB_TOKEN}" \
+      -H "Authorization: Bearer ${github_token}" \
       -H "Accept: application/vnd.github+json" \
       -H "Content-Type: application/json" \
       "https://api.github.com/repos/${GITHUB_REPOSITORY}/issues/${pr_number}/comments" \
@@ -155,29 +182,31 @@ upsert_pr_comment() {
   fi
 }
 
-MODE="${1:-${INPUT_MODE:-validate-repo}}"
+MODE="${1:-$(input_value 'MODE' 'validate-repo')}"
 FRAGMENT_FILE=""
 CAPTURE_FILE=""
 REPORT_FILE=""
 DASHBOARD_FILE=""
-BASELINE_REPORT="${INPUT_BASELINE_REPORT:-}"
+BASELINE_REPORT="$(input_value 'BASELINE-REPORT')"
 
 case "${MODE}" in
   emit-fragment)
-    FRAGMENT_FILE="${INPUT_EMIT_FILE:-/github/runner_temp/github-actionspec-fragments/current/job.json}"
+    FRAGMENT_FILE="$(input_value 'EMIT-FILE' '/github/runner_temp/github-actionspec-fragments/current/job.json')"
     mkdir -p "$(dirname "${FRAGMENT_FILE}")"
     EMIT_OUTPUT_ARGS=""
     EMIT_MATRIX_ARGS=""
     EMIT_STEP_CONCLUSION_ARGS=""
     EMIT_STEP_OUTPUT_ARGS=""
-    append_repeated_args "${INPUT_EMIT_OUTPUTS:-}" "--output" "EMIT_OUTPUT_ARGS"
-    append_repeated_args "${INPUT_EMIT_MATRIX:-}" "--matrix" "EMIT_MATRIX_ARGS"
-    append_repeated_args "${INPUT_EMIT_STEP_CONCLUSIONS:-}" "--step-conclusion" "EMIT_STEP_CONCLUSION_ARGS"
-    append_repeated_args "${INPUT_EMIT_STEP_OUTPUTS:-}" "--step-output" "EMIT_STEP_OUTPUT_ARGS"
+    append_repeated_args "$(input_value 'EMIT-OUTPUTS')" "--output" "EMIT_OUTPUT_ARGS"
+    append_repeated_args "$(input_value 'EMIT-MATRIX')" "--matrix" "EMIT_MATRIX_ARGS"
+    append_repeated_args "$(input_value 'EMIT-STEP-CONCLUSIONS')" "--step-conclusion" "EMIT_STEP_CONCLUSION_ARGS"
+    append_repeated_args "$(input_value 'EMIT-STEP-OUTPUTS')" "--step-output" "EMIT_STEP_OUTPUT_ARGS"
 
     set -- emit-fragment
-    [ -n "${INPUT_EMIT_JOB:-}" ] && set -- "$@" --job "${INPUT_EMIT_JOB}"
-    [ -n "${INPUT_EMIT_RESULT:-}" ] && set -- "$@" --result "${INPUT_EMIT_RESULT}"
+    emit_job="$(input_value 'EMIT-JOB')"
+    emit_result="$(input_value 'EMIT-RESULT')"
+    [ -n "${emit_job}" ] && set -- "$@" --job "${emit_job}"
+    [ -n "${emit_result}" ] && set -- "$@" --result "${emit_result}"
     if [ -n "${EMIT_OUTPUT_ARGS:-}" ]; then
       # shellcheck disable=SC2086
       set -- "$@" ${EMIT_OUTPUT_ARGS}
@@ -199,16 +228,18 @@ case "${MODE}" in
     write_outputs
     ;;
   capture)
-    CAPTURE_FILE="${INPUT_CAPTURE_FILE:-/github/runner_temp/github-actionspec-capture/current/workflow-run.json}"
+    CAPTURE_FILE="$(input_value 'CAPTURE-FILE' '/github/runner_temp/github-actionspec-capture/current/workflow-run.json')"
     mkdir -p "$(dirname "${CAPTURE_FILE}")"
     CAPTURE_INPUT_ARGS=""
     CAPTURE_JOB_FILE_ARGS=""
-    append_repeated_args "${INPUT_CAPTURE_INPUTS:-}" "--input" "CAPTURE_INPUT_ARGS"
-    append_repeated_args "${INPUT_CAPTURE_JOB_FILES:-}" "--job-file" "CAPTURE_JOB_FILE_ARGS"
+    append_repeated_args "$(input_value 'CAPTURE-INPUTS')" "--input" "CAPTURE_INPUT_ARGS"
+    append_repeated_args "$(input_value 'CAPTURE-JOB-FILES')" "--job-file" "CAPTURE_JOB_FILE_ARGS"
 
     set -- capture
-    [ -n "${INPUT_WORKFLOW:-}" ] && set -- "$@" --workflow "${INPUT_WORKFLOW}"
-    [ -n "${INPUT_REF_NAME:-}" ] && set -- "$@" --ref "${INPUT_REF_NAME}"
+    workflow_input="$(input_value 'WORKFLOW')"
+    ref_name_input="$(input_value 'REF-NAME')"
+    [ -n "${workflow_input}" ] && set -- "$@" --workflow "${workflow_input}"
+    [ -n "${ref_name_input}" ] && set -- "$@" --ref "${ref_name_input}"
     if [ -n "${CAPTURE_INPUT_ARGS:-}" ]; then
       # shellcheck disable=SC2086
       set -- "$@" ${CAPTURE_INPUT_ARGS}
@@ -222,16 +253,20 @@ case "${MODE}" in
     write_outputs
     ;;
   validate-repo)
-    REPORT_FILE="${INPUT_REPORT_FILE:-/github/runner_temp/github-actionspec-dashboard/current/validation-report.json}"
+    REPORT_FILE="$(input_value 'REPORT-FILE' '/github/runner_temp/github-actionspec-dashboard/current/validation-report.json')"
     DASHBOARD_FILE="$(resolve_dashboard_file)"
 
     mkdir -p "$(dirname "${REPORT_FILE}")" "$(dirname "${DASHBOARD_FILE}")"
 
     set --
-    [ -n "${INPUT_REPO:-}" ] && set -- "$@" --repo "${INPUT_REPO}"
-    [ -n "${INPUT_WORKFLOW:-}" ] && set -- "$@" --workflow "${INPUT_WORKFLOW}"
-    [ -n "${INPUT_ACTUAL:-}" ] && set -- "$@" --actual "${INPUT_ACTUAL}"
-    [ -n "${INPUT_DECLARATIONS_DIR:-}" ] && set -- "$@" --declarations-dir "${INPUT_DECLARATIONS_DIR}"
+    repo_input="$(input_value 'REPO')"
+    workflow_input="$(input_value 'WORKFLOW')"
+    actual_input="$(input_value 'ACTUAL')"
+    declarations_dir_input="$(input_value 'DECLARATIONS-DIR')"
+    [ -n "${repo_input}" ] && set -- "$@" --repo "${repo_input}"
+    [ -n "${workflow_input}" ] && set -- "$@" --workflow "${workflow_input}"
+    [ -n "${actual_input}" ] && set -- "$@" --actual "${actual_input}"
+    [ -n "${declarations_dir_input}" ] && set -- "$@" --declarations-dir "${declarations_dir_input}"
 
     set +e
     github-actionspec validate-repo "$@" --report-file "${REPORT_FILE}"
@@ -244,7 +279,7 @@ case "${MODE}" in
         set -- "$@" --baseline "${BASELINE_REPORT}"
       fi
       DASHBOARD_ARGS=""
-      append_repeated_args "${INPUT_DASHBOARD_OUTPUT_KEYS:-}" "--output-key" "DASHBOARD_ARGS"
+      append_repeated_args "$(input_value 'DASHBOARD-OUTPUT-KEYS')" "--output-key" "DASHBOARD_ARGS"
       if [ -n "${DASHBOARD_ARGS:-}" ]; then
         # shellcheck disable=SC2086
         set -- "$@" ${DASHBOARD_ARGS}
