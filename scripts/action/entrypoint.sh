@@ -5,6 +5,30 @@ lower_bool() {
   printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]'
 }
 
+action_temp_root() {
+  for candidate in "${RUNNER_TEMP:-}" "/github/runner_temp" "${TMPDIR:-}" "/tmp"; do
+    [ -n "${candidate}" ] || continue
+    if [ -d "${candidate}" ] && [ -w "${candidate}" ]; then
+      printf '%s' "${candidate%/}"
+      return
+    fi
+  done
+
+  printf '%s' "/tmp"
+}
+
+default_temp_path() {
+  root="$(action_temp_root)"
+  suffix="${1:-}"
+
+  if [ -z "${suffix}" ]; then
+    printf '%s' "${root}"
+    return
+  fi
+
+  printf '%s/%s' "${root}" "${suffix}"
+}
+
 input_value() {
   input_name="${1:-}"
   default_value="${2-}"
@@ -16,6 +40,10 @@ input_value() {
 
   raw_name="INPUT_${input_name}"
   legacy_name="$(printf 'INPUT_%s' "${input_name}" | tr '-' '_')"
+
+  # GitHub action inputs are exposed as INPUT_<NAME>, but shell runtimes vary in
+  # how they preserve non-POSIX names containing hyphens. Check the raw key
+  # first, then fall back to the underscored variant used by portable shells.
   raw_value="$(printenv "${raw_name}" 2>/dev/null || true)"
   if [ -n "${raw_value}" ]; then
     printf '%s' "${raw_value}"
@@ -191,7 +219,7 @@ BASELINE_REPORT="$(input_value 'BASELINE-REPORT')"
 
 case "${MODE}" in
   emit-fragment)
-    FRAGMENT_FILE="$(input_value 'EMIT-FILE' '/github/runner_temp/github-actionspec-fragments/current/job.json')"
+    FRAGMENT_FILE="$(input_value 'EMIT-FILE' "$(default_temp_path 'github-actionspec-fragments/current/job.json')")"
     mkdir -p "$(dirname "${FRAGMENT_FILE}")"
     EMIT_OUTPUT_ARGS=""
     EMIT_MATRIX_ARGS=""
@@ -228,7 +256,7 @@ case "${MODE}" in
     write_outputs
     ;;
   capture)
-    CAPTURE_FILE="$(input_value 'CAPTURE-FILE' '/github/runner_temp/github-actionspec-capture/current/workflow-run.json')"
+    CAPTURE_FILE="$(input_value 'CAPTURE-FILE' "$(default_temp_path 'github-actionspec-capture/current/workflow-run.json')")"
     mkdir -p "$(dirname "${CAPTURE_FILE}")"
     CAPTURE_INPUT_ARGS=""
     CAPTURE_JOB_FILE_ARGS=""
@@ -253,7 +281,7 @@ case "${MODE}" in
     write_outputs
     ;;
   validate-repo)
-    REPORT_FILE="$(input_value 'REPORT-FILE' '/github/runner_temp/github-actionspec-dashboard/current/validation-report.json')"
+    REPORT_FILE="$(input_value 'REPORT-FILE' "$(default_temp_path 'github-actionspec-dashboard/current/validation-report.json')")"
     DASHBOARD_FILE="$(resolve_dashboard_file)"
 
     mkdir -p "$(dirname "${REPORT_FILE}")" "$(dirname "${DASHBOARD_FILE}")"

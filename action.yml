@@ -39,9 +39,9 @@ inputs:
     required: false
     default: ""
   emit-file:
-    description: Path where the action should write the job fragment JSON in emit-fragment mode.
+    description: Path where the action should write the job fragment JSON in emit-fragment mode. When omitted, the action writes under the runner temp directory.
     required: false
-    default: /github/runner_temp/github-actionspec-fragments/current/job.json
+    default: ""
   repo:
     description: Path to the target repository containing .github/actionspec declarations.
     required: false
@@ -63,9 +63,9 @@ inputs:
     required: false
     default: ""
   capture-file:
-    description: Path where the action should write the normalized workflow payload in capture mode.
+    description: Path where the action should write the normalized workflow payload in capture mode. When omitted, the action writes under the runner temp directory.
     required: false
-    default: /github/runner_temp/github-actionspec-capture/current/workflow-run.json
+    default: ""
   actual:
     description: Path to a normalized workflow run JSON payload, a directory of JSON payloads, a glob pattern, or a newline-separated list of payload paths or glob patterns.
     required: false
@@ -75,9 +75,9 @@ inputs:
     required: false
     default: .github/actionspec
   report-file:
-    description: Path where the action should write the JSON validation report.
+    description: Path where the action should write the JSON validation report. When omitted, the action writes under the runner temp directory.
     required: false
-    default: /github/runner_temp/github-actionspec-dashboard/current/validation-report.json
+    default: ""
   baseline-report:
     description: Optional path to a previous JSON validation report used to render dashboard diffs.
     required: false

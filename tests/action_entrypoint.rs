@@ -411,10 +411,12 @@ exit 1
 }
 
 #[test]
-fn action_entrypoint_accepts_hyphenated_github_input_names() {
+fn action_entrypoint_defaults_emit_fragment_file_to_runner_temp() {
     let temp = tempdir().unwrap();
     let bin_dir = temp.path().join("bin");
+    let runner_temp = temp.path().join("runner-temp");
     fs::create_dir_all(&bin_dir).unwrap();
+    fs::create_dir_all(&runner_temp).unwrap();
 
     write_executable(
         &bin_dir.join("github-actionspec"),
@@ -423,11 +425,16 @@ set -eu
 cmd="$1"
 shift
 if [ "$cmd" = "emit-fragment" ]; then
-  args_log=""
+  output=""
+  prev=""
   for arg in "$@"; do
-    args_log="$args_log $arg"
+    if [ "$prev" = "--file" ]; then
+      output="$arg"
+    fi
+    prev="$arg"
   done
-  printf '%s\n' "$args_log" > "${EMIT_ARGS_LOG}"
+  mkdir -p "$(dirname "$output")"
+  printf '{}\n' > "$output"
   exit 0
 fi
 exit 1
@@ -435,9 +442,7 @@ exit 1
     );
 
     let output_file = temp.path().join("github_output.txt");
-    let args_log = temp.path().join("emit-args.log");
-
-    fs::write(&args_log, "").unwrap();
+    let expected_fragment = runner_temp.join("github-actionspec-fragments/current/job.json");
 
     let status = Command::new("/bin/sh")
         .arg("scripts/action/entrypoint.sh")
@@ -447,22 +452,18 @@ exit 1
             "PATH",
             format!("{}:{}", bin_dir.display(), std::env::var("PATH").unwrap()),
         )
-        .env("INPUT_EMIT-JOB", "detect-changes")
-        .env("INPUT_EMIT-RESULT", "success")
-        .env("INPUT_EMIT-OUTPUTS", "run_ci=true\nrun_pages=false")
-        .env("INPUT_EMIT-FILE", temp.path().join("fragment.json"))
+        .env("RUNNER_TEMP", &runner_temp)
+        .env("INPUT_EMIT_JOB", "detect-changes")
+        .env("INPUT_EMIT_RESULT", "success")
         .env("GITHUB_OUTPUT", &output_file)
-        .env("EMIT_ARGS_LOG", &args_log)
         .status()
         .unwrap();
 
     assert!(status.success());
+    assert!(expected_fragment.exists());
 
-    let args = fs::read_to_string(&args_log).unwrap();
-    assert!(args.contains("--job detect-changes"));
-    assert!(args.contains("--result success"));
-    assert!(args.contains("--output run_ci=true"));
-    assert!(args.contains("--output run_pages=false"));
+    let outputs = fs::read_to_string(&output_file).unwrap();
+    assert!(outputs.contains(&format!("fragment-path={}", expected_fragment.display())));
 }
 
 #[test]
