@@ -113,6 +113,32 @@ inputs:
 runs:
   using: docker
   image: Dockerfile
+  env:
+    INPUT_MODE: ${{ inputs.mode }}
+    INPUT_EMIT_JOB: ${{ inputs['emit-job'] }}
+    INPUT_EMIT_RESULT: ${{ inputs['emit-result'] }}
+    INPUT_EMIT_OUTPUTS: ${{ inputs['emit-outputs'] }}
+    INPUT_EMIT_MATRIX: ${{ inputs['emit-matrix'] }}
+    INPUT_EMIT_STEP_CONCLUSIONS: ${{ inputs['emit-step-conclusions'] }}
+    INPUT_EMIT_STEP_OUTPUTS: ${{ inputs['emit-step-outputs'] }}
+    INPUT_EMIT_FILE: ${{ inputs['emit-file'] }}
+    INPUT_REPO: ${{ inputs.repo }}
+    INPUT_WORKFLOW: ${{ inputs.workflow }}
+    INPUT_REF_NAME: ${{ inputs['ref-name'] }}
+    INPUT_CAPTURE_JOB_FILES: ${{ inputs['capture-job-files'] }}
+    INPUT_CAPTURE_INPUTS: ${{ inputs['capture-inputs'] }}
+    INPUT_CAPTURE_FILE: ${{ inputs['capture-file'] }}
+    INPUT_ACTUAL: ${{ inputs.actual }}
+    INPUT_DECLARATIONS_DIR: ${{ inputs['declarations-dir'] }}
+    INPUT_REPORT_FILE: ${{ inputs['report-file'] }}
+    INPUT_BASELINE_REPORT: ${{ inputs['baseline-report'] }}
+    INPUT_DASHBOARD_FILE: ${{ inputs['dashboard-file'] }}
+    INPUT_DASHBOARD_OUTPUT_KEYS: ${{ inputs['dashboard-output-keys'] }}
+    INPUT_WRITE_SUMMARY: ${{ inputs['write-summary'] }}
+    INPUT_COMMENT_PR: ${{ inputs['comment-pr'] }}
+    INPUT_COMMENT_TITLE: ${{ inputs['comment-title'] }}
+    INPUT_COMMENT_TAG: ${{ inputs['comment-tag'] }}
+    INPUT_GITHUB_TOKEN: ${{ inputs['github-token'] }}
   entrypoint: /usr/local/bin/github-actionspec-action
   args:
     - ${{ inputs.mode }}
