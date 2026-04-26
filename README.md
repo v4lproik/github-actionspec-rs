@@ -77,6 +77,118 @@ If you want the smallest GitHub Action integration, start from the generated sni
     dashboard-file: /github/runner_temp/actionspec/current/dashboard.md
 ```
 
+## For AI Tools
+
+If you want an AI agent to integrate the library into another repository, keep the request concrete:
+
+1. Tell it which workflow to validate.
+2. Tell it whether to start from fixture payloads or from runtime capture.
+3. Tell it to keep contracts under `.github/actionspec/<workflow-name>/`.
+4. Tell it to use `just` commands locally and `uses: v4lproik/github-actionspec-rs@main` in workflows.
+
+Repository shape an AI agent should create:
+
+```text
+.github/workflows/ci.yml
+.github/actionspec/ci/main.cue
+tests/fixtures/ci/baseline.json
+target/actionspec/validation-report.json
+target/actionspec/dashboard.md
+```
+
+Minimal local setup:
+
+```bash
+just bootstrap-actionspec . ci.yml
+
+just validate-repo-dashboard . ci.yml \
+  tests/fixtures/ci/baseline.json \
+  target/actionspec/validation-report.json \
+  target/actionspec/dashboard.md
+```
+
+Reusable workflow linting:
+
+```bash
+just validate-callers .
+
+just validate-callers-report . \
+  target/actionspec/callers-report.json
+```
+
+Minimal validation action:
+
+```yaml
+- uses: actions/checkout@v6
+
+- name: Validate ci.yml contract
+  id: actionspec
+  uses: v4lproik/github-actionspec-rs@main
+  with:
+    repo: .
+    workflow: ci.yml
+    actual: tests/fixtures/ci/baseline.json
+    report-file: /github/runner_temp/actionspec/current/validation-report.json
+    dashboard-file: /github/runner_temp/actionspec/current/dashboard.md
+
+- name: Upload actionspec artifacts
+  if: ${{ always() }}
+  uses: actions/upload-artifact@v4
+  with:
+    name: actionspec-ci
+    path: |
+      ${{ steps.actionspec.outputs.report-path }}
+      ${{ steps.actionspec.outputs.dashboard-path }}
+```
+
+Full action flow when the workflow already emits job-level data:
+
+```yaml
+- name: Emit build fragment
+  id: actionspec-build
+  uses: v4lproik/github-actionspec-rs@main
+  with:
+    mode: emit-fragment
+    emit-job: build
+    emit-result: success
+    emit-outputs: |
+      contract_build=build-ts-service
+    emit-matrix: |
+      app=build-ts-service
+    emit-file: /github/runner_temp/actionspec/fragments/build.json
+
+- name: Capture workflow payload
+  id: actionspec-capture
+  uses: v4lproik/github-actionspec-rs@main
+  with:
+    mode: capture
+    workflow: ci.yml
+    ref-name: main
+    capture-job-files: |
+      ${{ steps.actionspec-build.outputs.fragment-path }}
+    capture-file: /github/runner_temp/actionspec/current/workflow-run.json
+
+- name: Validate captured payload
+  id: actionspec-validate
+  uses: v4lproik/github-actionspec-rs@main
+  with:
+    repo: .
+    workflow: ci.yml
+    actual: ${{ steps.actionspec-capture.outputs.capture-path }}
+    report-file: /github/runner_temp/actionspec/current/validation-report.json
+    dashboard-file: /github/runner_temp/actionspec/current/dashboard.md
+    comment-pr: true
+    github-token: ${{ github.token }}
+```
+
+Good instructions for an AI agent:
+
+- Create or tighten `.github/actionspec/<workflow>/main.cue`.
+- Start from one fixture payload before enforcing runtime capture.
+- Add artifact upload for the JSON report and markdown dashboard.
+- Add `just validate-callers .` or `just lint` to CI when reusable workflows are used.
+- Keep the workflow contract next to the workflow it describes.
+
 ## What You Get
 
 - A JSON validation report with workflow metadata, job results, matrix labels, outputs, and typed issues.
@@ -111,6 +223,7 @@ The dashboard starts with a short issue summary so reviewers can see what kind o
 
 - [Overview](https://v4lproik.github.io/github-actionspec-rs/)
 - [Getting Started](https://v4lproik.github.io/github-actionspec-rs/getting-started.html)
+- [Examples](https://v4lproik.github.io/github-actionspec-rs/examples.html)
 - [Workflow Flow](https://v4lproik.github.io/github-actionspec-rs/workflow-flow.html)
 - [Reports](https://v4lproik.github.io/github-actionspec-rs/reports.html)
 - [Troubleshooting](https://v4lproik.github.io/github-actionspec-rs/troubleshooting.html)

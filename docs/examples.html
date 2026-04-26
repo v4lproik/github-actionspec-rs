@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Examples | github-actionspec-rs</title>
+    <meta
+      name="description"
+      content="Copy-paste examples for integrating github-actionspec-rs locally, in CI, and with AI-assisted tooling."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Public+Sans:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="site-frame">
+      <section class="hero-shell hero-shell-compact">
+        <div class="page-shell">
+          <header class="site-header">
+            <a class="brand" href="index.html" aria-label="github-actionspec-rs home">
+              <span class="brand-mark">
+                <img class="brand-logo" src="logo-mark.svg" alt="" />
+              </span>
+              <span class="brand-text">github-actionspec-rs</span>
+            </a>
+            <nav class="site-nav" aria-label="Primary">
+              <a href="index.html">Overview</a>
+              <a href="getting-started.html">Getting Started</a>
+              <a class="site-nav-active" href="examples.html">Examples</a>
+              <a href="workflow-flow.html">Workflow Flow</a>
+              <a href="reports.html">Reports</a>
+              <a href="troubleshooting.html">Troubleshooting</a>
+              <a href="ci-reference.html">CI</a>
+              <a href="https://github.com/v4lproik/github-actionspec-rs">GitHub</a>
+            </nav>
+          </header>
+
+          <main class="page-intro">
+            <p class="eyebrow">Examples</p>
+            <h1>Copy-paste integration patterns.</h1>
+            <p class="hero-text">
+              These examples are written to be easy for engineers and AI agents to apply. Start
+              with one workflow, one contract, and one payload.
+            </p>
+          </main>
+        </div>
+      </section>
+
+      <div class="page-shell page-shell-body page-shell-tight">
+        <section class="content-section first-section">
+          <div class="doc-grid">
+            <article class="card card-featured">
+              <p class="card-kicker">Repository shape</p>
+              <pre><code>.github/workflows/ci.yml
+.github/actionspec/ci/main.cue
+tests/fixtures/ci/baseline.json
+target/actionspec/validation-report.json
+target/actionspec/dashboard.md</code></pre>
+            </article>
+            <article class="card">
+              <p class="card-kicker">Good defaults</p>
+              <ul class="doc-list">
+                <li>Use one declaration directory per workflow.</li>
+                <li>Start from a baseline fixture before runtime capture.</li>
+                <li>Keep reports and dashboards as uploaded artifacts.</li>
+                <li>Use <code>just</code> locally and the GitHub Action in workflows.</li>
+              </ul>
+            </article>
+          </div>
+        </section>
+
+        <section class="content-section">
+          <div class="section-heading">
+            <p class="eyebrow">Local bootstrap</p>
+            <h2>Create the first contract and payload.</h2>
+            <p>
+              This is the shortest path for an AI tool: bootstrap from the workflow file, then
+              validate the generated baseline.
+            </p>
+          </div>
+
+          <div class="doc-grid">
+            <article class="code-card">
+              <p class="code-title">Bootstrap</p>
+              <pre><code>just bootstrap-actionspec . ci.yml</code></pre>
+            </article>
+
+            <article class="code-card code-card-dark">
+              <p class="code-title">Validate baseline</p>
+              <pre><code>just validate-repo-dashboard . ci.yml \
+  tests/fixtures/ci/baseline.json \
+  target/actionspec/validation-report.json \
+  target/actionspec/dashboard.md</code></pre>
+            </article>
+          </div>
+        </section>
+
+        <section class="content-section">
+          <div class="section-heading">
+            <p class="eyebrow">Reusable workflows</p>
+            <h2>Lint callers separately.</h2>
+            <p>
+              If the repository uses <code>workflow_call</code>, run interface validation before
+              payload validation.
+            </p>
+          </div>
+
+          <div class="doc-grid">
+            <article class="code-card">
+              <p class="code-title">Quick check</p>
+              <pre><code>just validate-callers .</code></pre>
+            </article>
+
+            <article class="code-card">
+              <p class="code-title">Report for CI artifacts</p>
+              <pre><code>just validate-callers-report . \
+  target/actionspec/callers-report.json</code></pre>
+            </article>
+          </div>
+        </section>
+
+        <section class="content-section">
+          <div class="section-heading">
+            <p class="eyebrow">Minimal action</p>
+            <h2>Validate a fixture payload in GitHub Actions.</h2>
+          </div>
+
+          <article class="code-card">
+            <p class="code-title">Validation-only workflow snippet</p>
+            <pre><code>- uses: actions/checkout@v6
+
+- name: Validate ci.yml contract
+  id: actionspec
+  uses: v4lproik/github-actionspec-rs@main
+  with:
+    repo: .
+    workflow: ci.yml
+    actual: tests/fixtures/ci/baseline.json
+    report-file: /github/runner_temp/actionspec/current/validation-report.json
+    dashboard-file: /github/runner_temp/actionspec/current/dashboard.md
+
+- name: Upload actionspec artifacts
+  if: ${{ always() }}
+  uses: actions/upload-artifact@v4
+  with:
+    name: actionspec-ci
+    path: |
+      ${{ steps.actionspec.outputs.report-path }}
+      ${{ steps.actionspec.outputs.dashboard-path }}</code></pre>
+          </article>
+        </section>
+
+        <section class="content-section">
+          <div class="section-heading">
+            <p class="eyebrow">Full flow</p>
+            <h2>Emit, capture, then validate.</h2>
+            <p>
+              Use this once the workflow already exposes meaningful job status, matrix, or output
+              values.
+            </p>
+          </div>
+
+          <div class="doc-grid">
+            <article class="code-card">
+              <p class="code-title">Emit and capture</p>
+              <pre><code>- name: Emit build fragment
+  id: actionspec-build
+  uses: v4lproik/github-actionspec-rs@main
+  with:
+    mode: emit-fragment
+    emit-job: build
+    emit-result: success
+    emit-outputs: |
+      contract_build=build-ts-service
+    emit-matrix: |
+      app=build-ts-service
+    emit-file: /github/runner_temp/actionspec/fragments/build.json
+
+- name: Capture workflow payload
+  id: actionspec-capture
+  uses: v4lproik/github-actionspec-rs@main
+  with:
+    mode: capture
+    workflow: ci.yml
+    ref-name: main
+    capture-job-files: |
+      ${{ steps.actionspec-build.outputs.fragment-path }}
+    capture-file: /github/runner_temp/actionspec/current/workflow-run.json</code></pre>
+            </article>
+
+            <article class="code-card code-card-dark">
+              <p class="code-title">Validate and publish</p>
+              <pre><code>- name: Validate captured payload
+  id: actionspec-validate
+  uses: v4lproik/github-actionspec-rs@main
+  with:
+    repo: .
+    workflow: ci.yml
+    actual: ${{ steps.actionspec-capture.outputs.capture-path }}
+    report-file: /github/runner_temp/actionspec/current/validation-report.json
+    dashboard-file: /github/runner_temp/actionspec/current/dashboard.md
+    comment-pr: true
+    github-token: ${{ github.token }}
+
+- name: Upload actionspec artifacts
+  if: ${{ always() }}
+  uses: actions/upload-artifact@v4
+  with:
+    name: actionspec-runtime
+    path: |
+      ${{ steps.actionspec-capture.outputs.capture-path }}
+      ${{ steps.actionspec-validate.outputs.report-path }}
+      ${{ steps.actionspec-validate.outputs.dashboard-path }}</code></pre>
+            </article>
+          </div>
+        </section>
+
+        <section class="content-section">
+          <div class="section-heading">
+            <p class="eyebrow">Prompting</p>
+            <h2>Give AI agents explicit tasks.</h2>
+          </div>
+
+          <article class="card">
+            <ul class="doc-list">
+              <li>Create `.github/actionspec/&lt;workflow-name&gt;/main.cue` for one workflow.</li>
+              <li>Generate `tests/fixtures/&lt;workflow-name&gt;/baseline.json` from the current workflow.</li>
+              <li>Add `just validate-callers .` if reusable workflows are used.</li>
+              <li>Add one GitHub Action step that uploads the JSON report and markdown dashboard.</li>
+              <li>Do not start with every workflow. Start with one stable workflow and expand later.</li>
+            </ul>
+          </article>
+        </section>
+      </div>
+    </div>
+  </body>
+</html>
